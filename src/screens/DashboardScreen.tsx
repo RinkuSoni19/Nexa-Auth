@@ -24,9 +24,10 @@ const TokenCard: React.FC<{
   copiedId: string | null;
 }> = ({ account, now, secsLeft, hideTokens, onCopy, onDetail, copiedId }) => {
   const code = generateTOTP(account.secret, now, account.period, account.digits, account.algorithm);
+  const accountSecondsLeft = getSecondsRemaining(now, account.period);
   const isCopied = copiedId === account.id;
-  const isUrgent = secsLeft <= 5;
-  const pct = (secsLeft / account.period) * 100;
+  const isUrgent = accountSecondsLeft <= 5;
+  const pct = (accountSecondsLeft / account.period) * 100;
 
   return (
     <motion.div

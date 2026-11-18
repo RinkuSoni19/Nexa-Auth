@@ -1,15 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { AuthAccount, User, AppSettings, Screen, Category } from '../types';
 
-const INITIAL_DEMO_ACCOUNTS: AuthAccount[] = [
-  { id:'1', issuer:'Google',        accountName:'alex@gmail.com',       secret:'SECRET001', iconInitial:'G', iconBg:'from-blue-500 to-blue-700',    category:'personal', isFavorite:true,  addedAt:Date.now()-86400000*5, algorithm:'SHA1', digits:6, period:30 },
-  { id:'2', issuer:'GitHub',        accountName:'@alexdev',             secret:'SECRET002', iconInitial:'G', iconBg:'from-zinc-700 to-zinc-900',    category:'work',     isFavorite:true,  addedAt:Date.now()-86400000*4, algorithm:'SHA1', digits:6, period:30 },
-  { id:'3', issuer:'Binance',       accountName:'pro.trader#8841',      secret:'SECRET003', iconInitial:'B', iconBg:'from-yellow-500 to-amber-600', category:'crypto',   isFavorite:true,  addedAt:Date.now()-86400000*3, algorithm:'SHA1', digits:6, period:30 },
-  { id:'4', issuer:'AWS Cloud',     accountName:'root@aws',             secret:'SECRET004', iconInitial:'A', iconBg:'from-orange-500 to-amber-600', category:'work',     isFavorite:false, addedAt:Date.now()-86400000*2, algorithm:'SHA1', digits:6, period:30 },
-  { id:'5', issuer:'ProtonMail',    accountName:'vault@proton.me',      secret:'SECRET005', iconInitial:'P', iconBg:'from-purple-600 to-violet-800',category:'personal', isFavorite:false, addedAt:Date.now()-86400000*1, algorithm:'SHA1', digits:6, period:30 },
-  { id:'6', issuer:'Discord',       accountName:'nexauser#1234',        secret:'SECRET006', iconInitial:'D', iconBg:'from-indigo-500 to-indigo-700',category:'social',   isFavorite:false, addedAt:Date.now()-86400000,   algorithm:'SHA1', digits:6, period:30 },
-  { id:'7', issuer:'Coinbase Pro',  accountName:'crypto.alex@cb.com',   secret:'SECRET007', iconInitial:'C', iconBg:'from-blue-600 to-cyan-600',    category:'crypto',   isFavorite:false, addedAt:Date.now()-3600000,    algorithm:'SHA1', digits:6, period:30 },
-];
+const INITIAL_DEMO_ACCOUNTS: AuthAccount[] = [];
 
 interface AppContextType {
   screen: Screen;
@@ -111,6 +103,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [toast, setToast] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
+  useEffect(() => {
+    if (!settings.autoLock || !user) return;
+    let timeoutId: number;
+    const resetTimer = () => {
+      window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => setIsLocked(true), settings.autoLockTimeout * 60 * 1000);
+    };
+    const events: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(eventName => window.addEventListener(eventName, resetTimer, { passive: true }));
+    resetTimer();
+    return () => {
+      window.clearTimeout(timeoutId);
+      events.forEach(eventName => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [settings.autoLock, settings.autoLockTimeout, user]);
+
   // Sync state to localStorage
   const setUser = useCallback((u: User | null) => {
     setUserState(u);
@@ -177,26 +185,105 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const unlock = useCallback(() => setIsLocked(false), []);
   const lock   = useCallback(() => setIsLocked(true),  []);
 
-  const exportBackup = useCallback(() => {
-    const data = JSON.stringify({
-      version: '2.0.0',
-      exportedAt: Date.now(),
-      accounts,
-      settings
-    }, null, 2);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `nexa-vault-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Vault backup saved to files');
+  const exportBackup = useCallback(async () => {
+    if (!settings.backupEnabled) {
+      showToast('Enable encrypted local backup in Settings');
+      return;
+    }
+    if (!settings.appLockPin) {
+      showToast('Set a 4-digit vault PIN before exporting');
+      return;
+    }
+    try {
+      const encoder = new TextEncoder();
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(settings.appLockPin),
+        'PBKDF2',
+        false,
+        ['deriveKey'],
+      );
+      const key = await crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt'],
+      );
+      const plaintext = JSON.stringify({
+        version: '2.0.0',
+        exportedAt: Date.now(),
+        accounts,
+        settings,
+      });
+      const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encoder.encode(plaintext),
+      );
+      const payload = {
+        format: 'nexa-vault-aes-gcm',
+        version: '2.0.0',
+        salt: Array.from(salt).map(v => v.toString(16).padStart(2, '0')).join(''),
+        iv: Array.from(iv).map(v => v.toString(16).padStart(2, '0')).join(''),
+        ciphertext: Array.from(new Uint8Array(encrypted)).map(v => v.toString(16).padStart(2, '0')).join(''),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nexa-vault-backup-${new Date().toISOString().slice(0, 10)}.nexa.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Encrypted vault backup saved');
+    } catch {
+      showToast('Could not create vault backup');
+    }
   }, [accounts, settings, showToast]);
 
   const importBackup = useCallback((jsonStr: string) => {
     try {
       const parsed = JSON.parse(jsonStr);
+      if (parsed.format === 'nexa-vault-aes-gcm') {
+        const pin = window.prompt('Enter the 4-digit PIN used for this backup');
+        if (!pin || !/^\d{4}$/.test(pin)) {
+          showToast('A valid 4-digit PIN is required');
+          return false;
+        }
+        const decoder = new TextDecoder();
+        const encoder = new TextEncoder();
+        const hexToBytes = (hex: string) => new Uint8Array(hex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
+        (async () => {
+          try {
+            const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(pin), 'PBKDF2', false, ['deriveKey']);
+            const key = await crypto.subtle.deriveKey(
+              { name: 'PBKDF2', salt: hexToBytes(parsed.salt), iterations: 150000, hash: 'SHA-256' },
+              keyMaterial,
+              { name: 'AES-GCM', length: 256 },
+              false,
+              ['decrypt'],
+            );
+            const decrypted = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv: hexToBytes(parsed.iv) },
+              key,
+              hexToBytes(parsed.ciphertext),
+            );
+            const backup = JSON.parse(decoder.decode(decrypted));
+            if (Array.isArray(backup.accounts)) {
+              setAccounts(backup.accounts);
+              if (backup.settings) updateSettings(backup.settings);
+              showToast(`Imported ${backup.accounts.length} accounts!`);
+            } else {
+              showToast('Invalid encrypted backup data');
+            }
+          } catch {
+            showToast('Incorrect PIN or damaged backup');
+          }
+        })();
+        return true;
+      }
       if (Array.isArray(parsed.accounts)) {
         setAccounts(parsed.accounts);
         if (parsed.settings) updateSettings(parsed.settings);

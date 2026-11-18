@@ -1,49 +1,32 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Fingerprint, Lock, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Lock, CheckCircle2, LogOut } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 
 export const LockScreen: React.FC = () => {
-  const { unlock, showToast } = useApp();
+  const { unlock, showToast, settings, setScreen, setUser } = useApp();
   const [pin, setPin] = useState<string[]>([]);
-  const [isHolding, setIsHolding] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
-  const [progress, setProgress] = useState(0);
-
-  const handleFingerprintStart = () => {
-    setIsHolding(true);
-    let p = 0;
-    const interval = setInterval(() => {
-      p += 15;
-      setProgress(p);
-      if (p >= 100) {
-        clearInterval(interval);
-        setIsVerified(true);
-        setTimeout(() => {
-          unlock();
-          showToast('Vault Unlocked via Biometrics');
-        }, 600);
-      }
-    }, 60);
-  };
-
-  const handleFingerprintEnd = () => {
-    if (!isVerified) {
-      setIsHolding(false);
-      setProgress(0);
-    }
-  };
 
   const handlePinPress = (digit: string) => {
     if (pin.length < 4) {
       const newPin = [...pin, digit];
       setPin(newPin);
       if (newPin.length === 4) {
-        // Any 4 digits unlock in demo or match PIN
-        setTimeout(() => {
-          unlock();
-          showToast('Vault Unlocked via PIN');
-        }, 400);
+        if (!settings.appLockPin) {
+          showToast('Set a 4-digit vault PIN in Settings first');
+          setPin([]);
+          return;
+        }
+        if (newPin.join('') === settings.appLockPin) {
+          setIsVerified(true);
+          setTimeout(() => {
+            unlock();
+            showToast('Vault Unlocked via PIN');
+          }, 300);
+        } else {
+          showToast('Incorrect vault PIN');
+          setPin([]);
+        }
       }
     }
   };
@@ -65,54 +48,31 @@ export const LockScreen: React.FC = () => {
         </div>
         <h2 className="text-xl font-black text-white">NexaAuth Vault Locked</h2>
         <p className="text-xs text-zinc-400 mt-1 font-mono">Authenticate to decrypt credentials</p>
+        <button
+          onClick={() => { setUser(null); setScreen('welcome'); showToast('Signed out'); }}
+          className="mt-3 flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-red-400 transition cursor-pointer"
+        >
+          <LogOut className="w-3 h-3" /> Sign out
+        </button>
       </div>
 
-      {/* Center Biometric Sensor */}
+      {/* PIN authentication */}
       <div className="relative z-10 flex flex-col items-center my-auto">
-        <div className="relative w-32 h-32 flex items-center justify-center">
-          {/* Progress Circular SVG */}
-          <svg className="w-full h-full -rotate-90">
-            <circle cx="64" cy="64" r="54" stroke="#182c20" strokeWidth="4" fill="transparent" />
-            <circle
-              cx="64" cy="64" r="54"
-              stroke="#00ff88"
-              strokeWidth="4"
-              fill="transparent"
-              strokeDasharray={339}
-              strokeDashoffset={339 - (339 * progress / 100)}
-              strokeLinecap="round"
-              className="transition-all duration-75"
-            />
-          </svg>
-
-          <button
-            onMouseDown={handleFingerprintStart}
-            onMouseUp={handleFingerprintEnd}
-            onTouchStart={handleFingerprintStart}
-            onTouchEnd={handleFingerprintEnd}
-            className={`absolute inset-3 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-              isVerified
-                ? 'bg-emerald-500 text-black scale-105 shadow-[0_0_30px_#00ff88]'
-                : isHolding
-                ? 'bg-emerald-950/80 text-emerald-300 scale-95 border-2 border-emerald-400'
-                : 'bg-[#0a1811] text-emerald-400 hover:bg-[#11261b] border border-emerald-500/30'
-            }`}
-          >
-            {isVerified ? (
-              <CheckCircle2 className="w-14 h-14" />
-            ) : (
-              <Fingerprint className={`w-14 h-14 ${isHolding ? 'animate-pulse' : ''}`} />
-            )}
-          </button>
+        <div className={`w-20 h-20 rounded-full flex items-center justify-center border ${
+          isVerified
+            ? 'bg-emerald-500 text-black border-emerald-300 shadow-[0_0_30px_#00ff88]'
+            : 'bg-[#0a1811] text-emerald-400 border-emerald-500/30'
+        }`}>
+          {isVerified ? <CheckCircle2 className="w-10 h-10" /> : <Lock className="w-9 h-9" />}
         </div>
 
         <span className="text-xs font-mono text-zinc-400 mt-4">
           {isVerified ? (
             <span className="text-emerald-400 font-bold">IDENTITY CONFIRMED</span>
-          ) : isHolding ? (
-            <span className="text-emerald-300 animate-pulse">Scanning biometric sensor…</span>
+          ) : !settings.appLockPin ? (
+            <span className="text-amber-400">Set a PIN in Settings</span>
           ) : (
-            <span>Press & hold fingerprint sensor</span>
+            <span>Enter your 4-digit PIN</span>
           )}
         </span>
 

@@ -62,6 +62,7 @@ export const AddAccountScreen: React.FC = () => {
       const issuerValue = (url.searchParams.get('issuer') || labelIssuer || 'Authenticator').trim();
       const accountValue = (labelAccount || labelIssuer || 'Unknown account').trim();
       const algorithmValue = (url.searchParams.get('algorithm') || 'SHA1').toUpperCase();
+      if (algorithmValue !== 'SHA1' && algorithmValue !== 'SHA256') return null;
       const digitsValue = Number(url.searchParams.get('digits') || 6) === 8 ? 8 : 6;
       const periodValue = Number(url.searchParams.get('period') || 30) === 60 ? 60 : 30;
       return {

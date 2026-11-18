@@ -16,10 +16,10 @@ export const AccountDetailScreen: React.FC = () => {
     const id = setInterval(() => {
       const t = Date.now();
       setNow(t);
-      setSecsLeft(getSecondsRemaining(t));
+      setSecsLeft(getSecondsRemaining(t, acc?.period || 30));
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [acc?.period]);
 
   if (!acc) { setScreen('dashboard'); return null; }
 

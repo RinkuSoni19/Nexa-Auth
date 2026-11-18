@@ -30,22 +30,7 @@ const GoogleLogo = () => (
 );
 
 // Active Google Accounts verified on the user's phone
-const PHONE_ACTIVE_ACCOUNTS: GoogleAccountItem[] = [
-  {
-    name: 'Rinku Soni',
-    email: 'rinkusoni28489@gmail.com',
-    initial: 'R',
-    color: 'from-purple-500 to-indigo-600',
-    badge: 'On This Phone',
-  },
-  {
-    name: 'lostb826',
-    email: 'lostb826@gmail.com',
-    initial: 'L',
-    color: 'from-blue-500 to-cyan-600',
-    badge: 'On This Phone',
-  },
-];
+const PHONE_ACTIVE_ACCOUNTS: GoogleAccountItem[] = [];
 
 export const AuthScreen: React.FC = () => {
   const { setScreen, setUser, showToast } = useApp();
@@ -60,7 +45,12 @@ export const AuthScreen: React.FC = () => {
   const [customEmailInput, setCustomEmailInput] = useState('');
   
   // Selected Account state
-  const [selectedAccount, setSelectedAccount] = useState<GoogleAccountItem>(PHONE_ACTIVE_ACCOUNTS[0]);
+  const [selectedAccount, setSelectedAccount] = useState<GoogleAccountItem>({
+    name: 'Google User',
+    email: '',
+    initial: 'G',
+    color: 'from-emerald-500 to-teal-600',
+  });
   
   // OTP state
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -119,6 +109,16 @@ export const AuthScreen: React.FC = () => {
 
   // When an account is picked
   const handleSelectAccount = (account: GoogleAccountItem) => {
+    if (!GOOGLE_AUTH_CONFIG.clientId) {
+      showToast('Google OAuth is not configured. Add a valid Google Client ID to sign in.');
+      setShowAccountChooser(false);
+      return;
+    }
+    if (account.badge !== 'Google OAuth Verified') {
+      showToast('This account has not been verified by Google OAuth');
+      setShowAccountChooser(false);
+      return;
+    }
     setSelectedAccount(account);
     setShowAccountChooser(false);
     setShowAddCustom(false);
@@ -151,6 +151,11 @@ export const AuthScreen: React.FC = () => {
       window.location.origin === 'http://localhost:3000' ||
       GOOGLE_AUTH_CONFIG.javascriptOrigins.includes(window.location.origin)
     );
+
+    if (!GOOGLE_AUTH_CONFIG.clientId) {
+      showToast('Google OAuth Client ID is missing. Real sign-in is unavailable.');
+      return;
+    }
 
     // If in authorized Web origin (http://localhost:3000), use Google OAuth2 Token Client
     if (isAllowedOrigin && typeof window !== 'undefined' && window.google?.accounts?.oauth2) {

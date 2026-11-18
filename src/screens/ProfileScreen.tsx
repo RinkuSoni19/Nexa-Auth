@@ -23,7 +23,7 @@ export const ProfileScreen: React.FC = () => {
 
   // Name editing
   const [isEditingName, setIsEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState(user?.name || 'Rinku Soni');
+  const [nameInput, setNameInput] = useState(user?.name || 'User');
 
   // Avatar picker modal
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -267,7 +267,7 @@ export const ProfileScreen: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center gap-2 mt-1">
-              <h2 className="text-xl font-black text-white">{user?.name || 'Rinku Soni'}</h2>
+              <h2 className="text-xl font-black text-white">{user?.name || 'User'}</h2>
               <button
                 onClick={() => { setIsEditingName(true); setNameInput(user?.name || ''); }}
                 className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400 transition cursor-pointer"
