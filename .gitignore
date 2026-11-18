@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Production / Bundles
+dist/
+build/
+
+# TypeScript
+tsconfig.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Android & Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/.idea/
+android/*.iml
+android/app/*.iml
+android/local.properties
+.vite/
+android/app/src/main/assets/
+android/capacitor-cordova-android-plugins/
+.gradle/
+*.log
+.env
+.env.*
+!.env.example
