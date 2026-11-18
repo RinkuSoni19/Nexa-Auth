@@ -113,22 +113,7 @@ export const SubscriptionScreen: React.FC = () => {
   };
 
   const handleCompletePayment = () => {
-    setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      setShowCheckout(false);
-      updateUser({ plan: selectedPlan.id });
-      showToast(`Activated ${selectedPlan.name}! Opening vault 🚀`);
-      confetti({
-        particleCount: 110,
-        spread: 100,
-        origin: { y: 0.5 },
-        colors: ['#00ff88', '#ff2e4d', '#ffd700', '#ffffff'],
-      });
-      setTimeout(() => {
-        setScreen('dashboard');
-      }, 1200);
-    }, 1400);
+    showToast('Secure payment provider is not configured');
   };
 
   return (
@@ -421,18 +406,13 @@ export const SubscriptionScreen: React.FC = () => {
               {/* Pay Button */}
               <button
                 onClick={handleCompletePayment}
-                disabled={isProcessing}
-                className="w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-black shadow-lg cursor-pointer hover:brightness-110 active:scale-98 transition disabled:opacity-50"
+                className="w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 bg-zinc-800 border border-zinc-700 text-zinc-400 shadow-lg cursor-pointer"
               >
-                {isProcessing ? (
-                  <><RefreshCw className="w-4 h-4 animate-spin text-black" /><span>Encrypting & Processing…</span></>
-                ) : (
-                  <><Lock className="w-4 h-4" /><span>Complete Secure Payment ({selectedPlan.price})</span></>
-                )}
+                <Lock className="w-4 h-4" /><span>Payment Provider Not Configured</span>
               </button>
 
               <p className="text-[9px] text-zinc-500 text-center font-mono mt-3">
-                Simulated 256-bit encrypted checkout. No real money charged.
+                No payment is processed in this build.
               </p>
             </motion.div>
           </div>

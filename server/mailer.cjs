@@ -21,6 +21,37 @@ function generateOtp() {
   return crypto.randomInt(100000, 1000000).toString();
 }
 
+async function sendGmailApi(accessToken, email, name, otp) {
+  if (!accessToken) return null;
+  const subject = `${otp} is your NexaAuth verification code`;
+  const html = generateEmailHtml(name, otp);
+  const mime =
+    `To: ${email}\r\n` +
+    `Subject: ${subject}\r\n` +
+    `MIME-Version: 1.0\r\n` +
+    `Content-Type: text/html; charset=UTF-8\r\n\r\n` +
+    html;
+  const encoded = Buffer.from(mime)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw: encoded }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error?.message || 'Google Gmail API rejected the email');
+  }
+  return data;
+}
+
 // Default config template
 function loadConfig() {
   if (fs.existsSync(CONFIG_FILE)) {
@@ -165,7 +196,7 @@ const server = http.createServer(async (req, res) => {
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
-        const { email, name } = JSON.parse(body);
+        const { email, name, accessToken } = JSON.parse(body);
         const normalizedEmail = normalizeEmail(email);
 
         if (!validateEmail(normalizedEmail)) {
@@ -181,6 +212,24 @@ const server = http.createServer(async (req, res) => {
           expiresAt: Date.now() + OTP_TTL_MS,
           attempts: 0,
         });
+
+        if (accessToken) {
+          try {
+            const gmailData = await sendGmailApi(accessToken, normalizedEmail, name, otp);
+            console.log(`[Mailer] Gmail API delivered email to ${normalizedEmail}:`, gmailData.id);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              success: true,
+              realEmailSent: true,
+              provider: 'gmail_api',
+              messageId: gmailData.id,
+              email: normalizedEmail,
+            }));
+            return;
+          } catch (gmailErr) {
+            console.error('[Mailer] Gmail API send failed:', gmailErr.message);
+          }
+        }
 
         // 1. Try Resend if configured
         if (config.resendApiKey) {

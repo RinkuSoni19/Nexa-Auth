@@ -58,6 +58,7 @@ export const AuthScreen: React.FC = () => {
   const [timer, setTimer] = useState(30);
   const [showNotification, setShowNotification] = useState(false);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
+  const [googleAccessToken, setGoogleAccessToken] = useState('');
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // 30s countdown timer
@@ -123,27 +124,20 @@ export const AuthScreen: React.FC = () => {
     setShowAccountChooser(false);
     setShowAddCustom(false);
 
-    const loggedUser: User = {
-      name: account.name,
-      email: account.email,
-      isEmailVerified: true,
-      isPhoneVerified: false,
-      avatar: undefined,
-      authMethod: 'google',
-      joinedAt: Date.now(),
-      plan: 'trial-7d',
-    };
-
-    setUser(loggedUser);
-    setStep('success');
-    showToast(`Signed in as ${account.email}`);
-    confetti({
-      particleCount: 85,
-      spread: 90,
-      origin: { y: 0.55 },
-      colors: ['#00ff88', '#00e5ff', '#ffd700', '#ffffff'],
+    showToast(`Sending verification code to ${account.email}…`);
+    sendEmailOtp(account.email, account.name, googleAccessToken).then((res) => {
+      if (!res.success) {
+        showToast(res.error || 'Could not send verification code');
+        return;
+      }
+      setOtp(['', '', '', '', '', '']);
+      setStep('otp-verify');
+      setShowNotification(true);
+      showToast(res.realEmailSent
+        ? `Verification code sent to ${account.email}`
+        : `Verification code requested for ${account.email}`);
+      setTimeout(() => otpRefs.current[0]?.focus(), 300);
     });
-    setTimeout(() => setScreen('dashboard'), 1200);
   };
 
   // Google Sign-In button click
@@ -164,10 +158,11 @@ export const AuthScreen: React.FC = () => {
       try {
         const tokenClient = window.google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE_AUTH_CONFIG.clientId,
-          scope: 'email profile openid',
+          scope: 'email profile openid https://www.googleapis.com/auth/gmail.send',
           callback: async (tokenResponse: any) => {
             setIsConnectingGoogle(false);
             if (tokenResponse?.access_token) {
+              setGoogleAccessToken(tokenResponse.access_token);
               try {
                 const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
                   headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
@@ -272,7 +267,7 @@ export const AuthScreen: React.FC = () => {
     setShowNotification(true);
 
     // Dispatch fresh OTP to user's email
-    sendEmailOtp(selectedAccount.email, selectedAccount.name).then((res) => {
+    sendEmailOtp(selectedAccount.email, selectedAccount.name, googleAccessToken).then((res) => {
       if (res.realEmailSent) {
         showToast(`📬 New OTP delivered to ${selectedAccount.email} inbox!`);
       } else if (!res.success) {

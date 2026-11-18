@@ -22,7 +22,7 @@ function getMailerEndpoints(path: 'send-otp'|'verify-otp'): string[] {
   ].filter((endpoint, index, endpoints) => endpoints.indexOf(endpoint) === index);
 }
 
-export async function sendEmailOtp(email: string, name?: string): Promise<SendOtpResult> {
+export async function sendEmailOtp(email: string, name?: string, accessToken?: string): Promise<SendOtpResult> {
   for (const endpoint of getMailerEndpoints('send-otp')) {
     try {
       const controller = new AbortController();
@@ -33,7 +33,7 @@ export async function sendEmailOtp(email: string, name?: string): Promise<SendOt
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, name }),
+        body: JSON.stringify({ email, name, accessToken }),
         signal: controller.signal,
       });
 
