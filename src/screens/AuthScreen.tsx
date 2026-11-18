@@ -138,7 +138,7 @@ export const AuthScreen: React.FC = () => {
       setStep('otp-verify');
       setOtp(['', '', '', '', '', '']);
       setShowNotification(true);
-      showToast(`Google 2FA Code sent to ${account.email}`);
+      showToast(`Verification code sent to ${account.email}`);
       setTimeout(() => {
         otpRefs.current[0]?.focus();
       }, 300);
@@ -153,7 +153,7 @@ export const AuthScreen: React.FC = () => {
     );
 
     if (!GOOGLE_AUTH_CONFIG.clientId) {
-      showToast('Google OAuth Client ID is missing. Real sign-in is unavailable.');
+      showToast('Google sign-in is not configured');
       return;
     }
 
@@ -191,7 +191,7 @@ export const AuthScreen: React.FC = () => {
           error_callback: (err: any) => {
             setIsConnectingGoogle(false);
             console.warn('Google OAuth popup closed or error:', err);
-            setShowAccountChooser(true);
+            showToast('Google sign-in was cancelled or unavailable');
           },
         });
         tokenClient.requestAccessToken({ prompt: 'select_account' });
@@ -202,9 +202,7 @@ export const AuthScreen: React.FC = () => {
       }
     }
 
-    // On Android (or when origin is not yet whitelisted in Google Console):
-    // Open the authentic Google Play Services account chooser bottom sheet immediately!
-    setShowAccountChooser(true);
+    showToast('Google sign-in is not available on this browser origin');
   };
 
   // Handle adding custom Google ID
@@ -383,11 +381,11 @@ export const AuthScreen: React.FC = () => {
             <div className="flex items-center justify-between pt-1 pb-4">
               <div className="flex items-center gap-1.5 bg-[#0d1f18]/90 px-2.5 py-1 rounded-full border border-emerald-500/20">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                <span className="text-[10px] font-mono font-semibold text-emerald-300 tracking-wider">NEXA SHIELD ACTIVE</span>
+                <span className="text-[10px] font-mono font-semibold text-emerald-300 tracking-wider">SECURE</span>
               </div>
               <div className="flex items-center gap-1 text-zinc-400 text-xs font-mono">
                 <Lock className="w-3.5 h-3.5 text-red-400" />
-                <span>AES-256</span>
+                <span>VAULT</span>
               </div>
             </div>
 
@@ -450,7 +448,7 @@ export const AuthScreen: React.FC = () => {
                 </h1>
                 <div className="flex items-center justify-center gap-2 mt-1">
                   <span className="h-px w-6 bg-gradient-to-r from-transparent to-red-500/50" />
-                  <span className="text-[10px] font-mono tracking-[0.25em] text-zinc-400 uppercase">Google 2FA Security</span>
+                  <span className="text-[10px] font-mono tracking-[0.25em] text-zinc-400 uppercase">Secure Account</span>
                   <span className="h-px w-6 bg-gradient-to-l from-transparent to-emerald-500/50" />
                 </div>
               </motion.div>
@@ -458,15 +456,6 @@ export const AuthScreen: React.FC = () => {
 
             {/* Google Login Trigger Section */}
             <div className="flex flex-col gap-2.5 mt-2">
-              {/* Google OAuth Active Client Badge */}
-              <div className="flex items-center justify-center gap-1.5 py-1 px-3 rounded-full bg-[#0a1811] border border-emerald-500/20 text-[10px] font-mono text-zinc-400 mx-auto">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                <span>Google OAuth Project:</span>
-                <span className="text-emerald-300 font-bold">
-                  {GOOGLE_AUTH_CONFIG.projectId || 'Not configured'}
-                </span>
-              </div>
-
               {/* 1. Google Login Button */}
               <motion.button
                 whileTap={{ scale: 0.97 }}
@@ -478,7 +467,7 @@ export const AuthScreen: React.FC = () => {
                 {isConnectingGoogle ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin text-zinc-700" />
-                    <span>Connecting Google OAuth…</span>
+                    <span>Connecting to Google…</span>
                   </>
                 ) : (
                   <>
@@ -514,12 +503,12 @@ export const AuthScreen: React.FC = () => {
               <div className="flex items-center justify-center gap-3 pt-1 text-[9px] font-mono text-zinc-500">
                 <span className="flex items-center gap-1 text-emerald-400 font-bold">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  CLIENT: {GOOGLE_AUTH_CONFIG.clientId.slice(0, 12)}…
+                  SECURE LOGIN
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  E2EE 256-BIT
+                  PRIVATE VAULT
                 </span>
               </div>
             </div>
@@ -553,7 +542,7 @@ export const AuthScreen: React.FC = () => {
                 >
                   <GoogleLogo />
                 </div>
-                <h2 className="text-xl font-black text-white">Enter Google 2FA OTP</h2>
+                <h2 className="text-xl font-black text-white">Enter Verification Code</h2>
                 <p className="text-xs text-zinc-300 mt-1 text-center max-w-xs">
                   A 6-digit verification code has been sent to
                 </p>
@@ -623,7 +612,7 @@ export const AuthScreen: React.FC = () => {
                     className="text-emerald-400 flex items-center gap-1.5 cursor-pointer hover:underline font-bold"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Resend Google OTP</span>
+                    <span>Resend Code</span>
                   </button>
                 )}
               </div>
@@ -704,9 +693,6 @@ export const AuthScreen: React.FC = () => {
                   <div>
                     <div className="flex items-center gap-1.5">
                       <h3 className="text-base font-bold text-white leading-tight">Choose an account</h3>
-                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
-                        OAuth 2.0
-                      </span>
                     </div>
                     <p className="text-xs text-zinc-400 leading-tight">
                       to continue to <span className="text-emerald-400 font-bold">NexaAuth</span>
@@ -719,17 +705,6 @@ export const AuthScreen: React.FC = () => {
                 >
                   <X className="w-5 h-5" />
                 </button>
-              </div>
-
-              {/* Google Project Credentials Indicator */}
-              <div className="my-2.5 px-3 py-1.5 rounded-xl bg-black/40 border border-zinc-800 flex items-center justify-between text-[10px] font-mono text-zinc-400">
-                <span className="truncate max-w-[230px]">
-                  Project: <strong className="text-zinc-200">{GOOGLE_AUTH_CONFIG.projectId}</strong>
-                </span>
-                <span className="text-emerald-400 font-bold flex-shrink-0 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Ready
-                </span>
               </div>
 
               {/* Account list */}
@@ -803,7 +778,7 @@ export const AuthScreen: React.FC = () => {
 
               {/* Disclaimer */}
               <p className="text-[10px] text-zinc-400 pt-3 border-t border-zinc-800 leading-relaxed font-sans mt-3">
-                To continue, Google will share your name, email address, and profile picture with NexaAuth. Client ID: <span className="font-mono text-zinc-300">{GOOGLE_AUTH_CONFIG.clientId.slice(0, 20)}…</span>
+                Google will share your name, email address, and profile picture with NexaAuth.
               </p>
             </motion.div>
           </div>
