@@ -2,9 +2,24 @@ const http = require('http');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const PORT = 3001;
 const CONFIG_FILE = path.join(__dirname, 'email-config.json');
+const OTP_TTL_MS = 5 * 60 * 1000;
+const OTP_STORE = new Map();
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
+}
+
+function generateOtp() {
+  return crypto.randomInt(100000, 1000000).toString();
+}
 
 // Default config template
 function loadConfig() {
@@ -150,16 +165,22 @@ const server = http.createServer(async (req, res) => {
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
-        const { email, otp, name } = JSON.parse(body);
+        const { email, name } = JSON.parse(body);
+        const normalizedEmail = normalizeEmail(email);
 
-        if (!email || !otp) {
+        if (!validateEmail(normalizedEmail)) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'email and otp are required' }));
+          res.end(JSON.stringify({ success: false, error: 'A valid email address is required' }));
           return;
         }
 
-        console.log(`[Mailer] Request to send OTP ${otp} to ${email} (${name || 'User'})`);
         const config = loadConfig();
+        const otp = generateOtp();
+        OTP_STORE.set(normalizedEmail, {
+          otp,
+          expiresAt: Date.now() + OTP_TTL_MS,
+          attempts: 0,
+        });
 
         // 1. Try Resend if configured
         if (config.resendApiKey) {
@@ -172,7 +193,7 @@ const server = http.createServer(async (req, res) => {
               },
               body: JSON.stringify({
                 from: 'NexaAuth Security <onboarding@resend.dev>',
-                to: email,
+                to: normalizedEmail,
                 subject: `${otp} is your NexaAuth Google 2FA verification code`,
                 html: generateEmailHtml(name, otp),
               }),
@@ -203,7 +224,7 @@ const server = http.createServer(async (req, res) => {
           const sender = config.gmailUser || config.smtp?.auth?.user;
           const mailOptions = {
             from: `"NexaAuth Security" <${sender}>`,
-            to: email,
+            to: normalizedEmail,
             subject: `${otp} is your NexaAuth Google 2FA verification code`,
             text: `Your NexaAuth verification OTP code is: ${otp}. It is valid for 5 minutes. Do not share this code with anyone.`,
             html: generateEmailHtml(name, otp),
@@ -223,16 +244,13 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // 3. Fallback when SMTP is not configured yet
-        console.warn(`[Mailer] Sender credentials missing in email-config.json. Simulated OTP for ${email}: ${otp}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        OTP_STORE.delete(normalizedEmail);
+        console.warn(`[Mailer] Sender credentials missing for ${normalizedEmail}`);
+        res.writeHead(503, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          success: true,
+          success: false,
           realEmailSent: false,
-          simulated: true,
-          otp,
-          email,
-          message: 'To deliver real emails to inbox, set gmailUser & gmailAppPassword in server/email-config.json',
+          error: 'Email delivery is not configured',
         }));
       } catch (err) {
         console.error('[Mailer] Error sending email:', err);
@@ -241,6 +259,59 @@ const server = http.createServer(async (req, res) => {
           success: false,
           error: err.message,
         }));
+      }
+    });
+    return;
+  }
+
+  // Verify OTP endpoint
+  if (req.url === '/api/verify-otp' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { email, otp } = JSON.parse(body);
+        const normalizedEmail = normalizeEmail(email);
+        const code = String(otp || '').trim();
+
+        if (!validateEmail(normalizedEmail) || !/^\d{6}$/.test(code)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Valid email and 6-digit OTP are required' }));
+          return;
+        }
+
+        const record = OTP_STORE.get(normalizedEmail);
+        if (!record) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Request a new OTP first' }));
+          return;
+        }
+        if (Date.now() > record.expiresAt) {
+          OTP_STORE.delete(normalizedEmail);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'OTP expired. Request a new code.' }));
+          return;
+        }
+        if (record.attempts >= 5) {
+          OTP_STORE.delete(normalizedEmail);
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Too many attempts. Request a new OTP.' }));
+          return;
+        }
+
+        record.attempts += 1;
+        if (!crypto.timingSafeEqual(Buffer.from(record.otp), Buffer.from(code))) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Incorrect OTP' }));
+          return;
+        }
+
+        OTP_STORE.delete(normalizedEmail);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, email: normalizedEmail }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
       }
     });
     return;
