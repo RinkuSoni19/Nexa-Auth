@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NexaAuth</string>
+    <string name="title_activity_main">NexaAuth</string>
+    <string name="package_name">com.nexaauth.mobile</string>
+    <string name="custom_url_scheme">com.nexaauth.mobile</string>
+</resources>

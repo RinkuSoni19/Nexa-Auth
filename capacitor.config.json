@@ -1,0 +1,9 @@
+{
+  "appId": "com.nexaauth.mobile",
+  "appName": "NexaAuth",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
