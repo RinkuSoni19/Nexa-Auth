@@ -123,26 +123,27 @@ export const AuthScreen: React.FC = () => {
     setShowAccountChooser(false);
     setShowAddCustom(false);
 
-    showToast(`Sending 2FA OTP to ${account.email}…`);
+    const loggedUser: User = {
+      name: account.name,
+      email: account.email,
+      isEmailVerified: true,
+      isPhoneVerified: false,
+      avatar: undefined,
+      authMethod: 'google',
+      joinedAt: Date.now(),
+      plan: 'trial-7d',
+    };
 
-    // Dispatch OTP to user's email
-    sendEmailOtp(account.email, account.name).then((res) => {
-      if (res.realEmailSent) {
-        showToast(`📬 OTP delivered to ${account.email} inbox!`);
-      } else if (!res.success) {
-        showToast(res.error || 'Could not send OTP');
-      }
+    setUser(loggedUser);
+    setStep('success');
+    showToast(`Signed in as ${account.email}`);
+    confetti({
+      particleCount: 85,
+      spread: 90,
+      origin: { y: 0.55 },
+      colors: ['#00ff88', '#00e5ff', '#ffd700', '#ffffff'],
     });
-
-    setTimeout(() => {
-      setStep('otp-verify');
-      setOtp(['', '', '', '', '', '']);
-      setShowNotification(true);
-      showToast(`Verification code sent to ${account.email}`);
-      setTimeout(() => {
-        otpRefs.current[0]?.focus();
-      }, 300);
-    }, 600);
+    setTimeout(() => setScreen('dashboard'), 1200);
   };
 
   // Google Sign-In button click
@@ -477,25 +478,6 @@ export const AuthScreen: React.FC = () => {
                 )}
               </motion.button>
 
-              <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => {
-                    setUser({
-                      name: 'Local User',
-                      isEmailVerified: false,
-                      isPhoneVerified: false,
-                      authMethod: 'phone',
-                      joinedAt: Date.now(),
-                      plan: 'free',
-                    });
-                    setScreen('dashboard');
-                    showToast('Opened your local vault');
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-[#0c1812] border border-emerald-500/30 text-emerald-300 font-bold text-xs cursor-pointer"
-                >
-                  <Shield className="w-4 h-4" />
-                  Continue in Local Vault
-              </motion.button>
 
               {/* Trust badges footer */}
               <div className="flex items-center justify-center gap-3 pt-1 text-[9px] font-mono text-zinc-500">
