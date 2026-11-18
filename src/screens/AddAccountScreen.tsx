@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, QrCode, Key, Camera, Sparkles, Check, Loader2, ChevronRight } from 'lucide-react';
+import { ArrowLeft, QrCode, Key, Camera, ImagePlus, StopCircle, Check, Loader2, ChevronRight } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
+import jsQR from 'jsqr';
+import type { AuthAccount } from '../types';
 
 const QUICK_TEMPLATES = [
   { issuer: 'Google',    icon: 'G', bg: 'from-blue-500 to-blue-700',    category: 'personal' as const },
@@ -15,56 +17,182 @@ const QUICK_TEMPLATES = [
 export const AddAccountScreen: React.FC = () => {
   const { setScreen, addAccount, showToast } = useApp();
   const [tab, setTab] = useState<'qr' | 'manual'>('qr');
-  const [scanning, setScanning] = useState(true);
+  const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanFrameRef = useRef<number | null>(null);
 
   /* manual form */
   const [issuer, setIssuer] = useState('');
   const [accountName, setAccountName] = useState('');
   const [secret, setSecret] = useState('');
   const [category, setCategory] = useState<'work'|'crypto'|'personal'|'social'>('personal');
+  const [algorithm, setAlgorithm] = useState<'SHA1'|'SHA256'>('SHA1');
+  const [digits, setDigits] = useState<6|8>(6);
+  const [period, setPeriod] = useState<30|60>(30);
   const [adding, setAdding] = useState(false);
 
-  const simulateScan = () => {
+  const stopCamera = () => {
+    if (scanFrameRef.current !== null) {
+      cancelAnimationFrame(scanFrameRef.current);
+      scanFrameRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
     setScanning(false);
+  };
+
+  useEffect(() => () => stopCamera(), []);
+
+  const normalizeSecret = (value: string) => value.toUpperCase().replace(/[^A-Z2-7]/g, '');
+
+  const parseOtpAuthUri = (rawValue: string): Omit<AuthAccount, 'id'|'addedAt'|'isFavorite'> | null => {
+    try {
+      const url = new URL(rawValue.trim());
+      if (url.protocol !== 'otpauth:' || url.hostname !== 'totp') return null;
+      const secretValue = normalizeSecret(url.searchParams.get('secret') || '');
+      if (!secretValue) return null;
+      const label = decodeURIComponent(url.pathname.replace(/^\//, ''));
+      const [labelIssuer, labelAccount] = label.includes(':')
+        ? label.split(':', 2).map(part => part.trim())
+        : ['', label];
+      const issuerValue = (url.searchParams.get('issuer') || labelIssuer || 'Authenticator').trim();
+      const accountValue = (labelAccount || labelIssuer || 'Unknown account').trim();
+      const algorithmValue = (url.searchParams.get('algorithm') || 'SHA1').toUpperCase();
+      if (algorithmValue !== 'SHA1' && algorithmValue !== 'SHA256') return null;
+      const digitsValue = Number(url.searchParams.get('digits') || 6) === 8 ? 8 : 6;
+      const periodValue = Number(url.searchParams.get('period') || 30) === 60 ? 60 : 30;
+      return {
+        issuer: issuerValue,
+        accountName: accountValue,
+        secret: secretValue,
+        iconInitial: issuerValue.charAt(0).toUpperCase(),
+        iconBg: 'from-teal-500 to-cyan-700',
+        category: 'personal',
+        algorithm: algorithmValue === 'SHA256' ? 'SHA256' : 'SHA1',
+        digits: digitsValue,
+        period: periodValue,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const addParsedAccount = (rawValue: string) => {
+    const parsed = parseOtpAuthUri(rawValue);
+    if (!parsed) {
+      showToast('QR is not a valid TOTP otpauth:// URI');
+      return;
+    }
+    addAccount({ ...parsed, isFavorite: false });
+    showToast(`${parsed.issuer} account added!`);
+    stopCamera();
     setScanned(true);
-    setTimeout(() => {
-      addAccount({
-        issuer: 'Cloudflare', accountName: 'admin@cloudflare.com',
-        secret: 'CLOUDFLARESECRET', iconInitial: 'C',
-        iconBg: 'from-orange-500 to-orange-700', category: 'work',
-        isFavorite: false, algorithm: 'SHA1', digits: 6, period: 30,
+    setTimeout(() => setScreen('dashboard'), 600);
+  };
+
+  const decodeImage = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) return;
+        context.drawImage(image, 0, 0);
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(pixels.data, pixels.width, pixels.height);
+        if (code?.data) addParsedAccount(code.data);
+        else showToast('QR code not detected in this image');
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const startCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      showToast('Camera unavailable; choose a QR image instead');
+      fileInputRef.current?.click();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
       });
-      showToast('Cloudflare added to your vault!');
-      setScreen('dashboard');
-    }, 800);
+      streamRef.current = stream;
+      setScanning(true);
+      setScanned(false);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      const scan = () => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas || video.readyState !== HTMLMediaElement.HAVE_ENOUGH_DATA) {
+          scanFrameRef.current = requestAnimationFrame(scan);
+          return;
+        }
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (context) {
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(pixels.data, pixels.width, pixels.height);
+          if (code?.data) {
+            addParsedAccount(code.data);
+            return;
+          }
+        }
+        scanFrameRef.current = requestAnimationFrame(scan);
+      };
+      scanFrameRef.current = requestAnimationFrame(scan);
+    } catch {
+      stopCamera();
+      showToast('Camera permission denied or unavailable');
+    }
   };
 
   const handleManualAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!issuer || !accountName) return;
+    const normalizedSecret = normalizeSecret(secret);
+    if (!issuer.trim() || !accountName.trim()) {
+      showToast('Enter both issuer and account name');
+      return;
+    }
+    if (!normalizedSecret) {
+      showToast('Enter a valid Base32 secret key');
+      return;
+    }
     setAdding(true);
     setTimeout(() => {
       addAccount({
-        issuer, accountName, secret: secret || `SECRET_${Date.now()}`,
-        iconInitial: issuer.charAt(0).toUpperCase(),
+        issuer: issuer.trim(),
+        accountName: accountName.trim(),
+        secret: normalizedSecret,
+        iconInitial: issuer.trim().charAt(0).toUpperCase(),
         iconBg: 'from-teal-500 to-cyan-700', category,
-        isFavorite: false, algorithm: 'SHA1', digits: 6, period: 30,
+        isFavorite: false, algorithm, digits, period,
       });
-      showToast(`${issuer} added to your vault!`);
+      showToast(`${issuer.trim()} added to your vault!`);
       setScreen('dashboard');
-    }, 1000);
+    }, 500);
   };
 
   const useTemplate = (t: typeof QUICK_TEMPLATES[0]) => {
-    addAccount({
-      issuer: t.issuer, accountName: `user@${t.issuer.toLowerCase()}.com`,
-      secret: `${t.issuer.toUpperCase()}SECRET`, iconInitial: t.icon,
-      iconBg: t.bg, category: t.category,
-      isFavorite: false, algorithm: 'SHA1', digits: 6, period: 30,
-    });
-    showToast(`${t.issuer} added!`);
-    setScreen('dashboard');
+    setIssuer(t.issuer);
+    setAccountName(`user@${t.issuer.toLowerCase()}.com`);
+    setCategory(t.category);
+    setTab('manual');
+    showToast(`Enter the Base32 secret from ${t.issuer}`);
   };
 
   return (
@@ -90,7 +218,7 @@ export const AddAccountScreen: React.FC = () => {
             { key: 'qr' as const, label: 'Scan QR Code', icon: Camera },
             { key: 'manual' as const, label: 'Manual Key', icon: Key },
           ].map(({ key, label, icon: Icon }) => (
-            <button key={key} onClick={() => setTab(key)}
+            <button key={key} onClick={() => { if (key === 'manual') stopCamera(); setTab(key); }}
               className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                 tab === key ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'text-zinc-400 hover:text-white'
               }`}>
@@ -102,7 +230,19 @@ export const AddAccountScreen: React.FC = () => {
         {/* QR TAB */}
         {tab === 'qr' && (
           <div className="flex flex-col items-center gap-4">
-            <div className="relative w-56 h-56 rounded-2xl border-2 border-emerald-500/40 bg-zinc-950 overflow-hidden group cursor-pointer" onClick={simulateScan}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={event => {
+                const file = event.target.files?.[0];
+                if (file) decodeImage(file);
+                event.target.value = '';
+              }}
+            />
+            <div className="relative w-56 h-56 rounded-2xl border-2 border-emerald-500/40 bg-zinc-950 overflow-hidden group">
               {/* Laser sweep */}
               {scanning && !scanned && (
                 <motion.div
@@ -121,20 +261,35 @@ export const AddAccountScreen: React.FC = () => {
                   <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-emerald-400">
                     <Check className="w-16 h-16" />
                   </motion.div>
+                ) : scanning ? (
+                  <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
                 ) : (
                   <QrCode className="w-28 h-28 text-emerald-400/70" />
                 )}
               </div>
-              <div className="absolute inset-0 bg-emerald-950/30 opacity-0 group-hover:opacity-100 backdrop-blur-[2px] flex flex-col items-center justify-center transition text-xs text-white font-mono">
-                <Sparkles className="w-5 h-5 text-emerald-400 mb-1" />Tap to Simulate Scan
-              </div>
+              <canvas ref={canvasRef} className="hidden" />
             </div>
 
-            <button onClick={simulateScan}
-              className="w-full py-3.5 rounded-2xl font-bold text-sm text-black cursor-pointer"
-              style={{ background: 'linear-gradient(135deg,#00c853,#00ff88)', boxShadow: '0 6px 20px rgba(0,200,83,0.4)' }}>
-              Simulate QR Scan
-            </button>
+            <div className="grid grid-cols-2 gap-2 w-full">
+              {scanning ? (
+                <button onClick={stopCamera}
+                  className="col-span-2 py-3.5 rounded-2xl font-bold text-sm text-white bg-red-600/80 border border-red-400/30 cursor-pointer flex items-center justify-center gap-2">
+                  <StopCircle className="w-4 h-4" /> Stop Camera
+                </button>
+              ) : (
+                <>
+                  <button onClick={startCamera}
+                    className="py-3.5 rounded-2xl font-bold text-sm text-black cursor-pointer flex items-center justify-center gap-2"
+                    style={{ background: 'linear-gradient(135deg,#00c853,#00ff88)', boxShadow: '0 6px 20px rgba(0,200,83,0.25)' }}>
+                    <Camera className="w-4 h-4" /> Start Camera
+                  </button>
+                  <button onClick={() => fileInputRef.current?.click()}
+                    className="py-3.5 rounded-2xl font-bold text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 cursor-pointer flex items-center justify-center gap-2">
+                    <ImagePlus className="w-4 h-4" /> Choose Image
+                  </button>
+                </>
+              )}
+            </div>
 
             {/* Quick templates */}
             <div className="w-full">
@@ -160,7 +315,7 @@ export const AddAccountScreen: React.FC = () => {
             {[
               { label: 'Service / Issuer', placeholder: 'e.g. GitHub, Coinbase', value: issuer, onChange: setIssuer, required: true },
               { label: 'Account / Email', placeholder: 'user@example.com', value: accountName, onChange: setAccountName, required: true },
-              { label: 'Secret Key (Base32)', placeholder: 'XXXX XXXX XXXX (optional)', value: secret, onChange: setSecret, required: false },
+              { label: 'Secret Key (Base32)', placeholder: 'XXXX XXXX XXXX', value: secret, onChange: setSecret, required: true },
             ].map(({ label, placeholder, value, onChange, required }) => (
               <div key={label}>
                 <label className="text-[11px] text-zinc-400 block mb-1 font-mono">{label}</label>
@@ -174,6 +329,42 @@ export const AddAccountScreen: React.FC = () => {
                 />
               </div>
             ))}
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[11px] text-zinc-400 block mb-1 font-mono">Algorithm</label>
+                <select
+                  value={algorithm}
+                  onChange={e => setAlgorithm(e.target.value as 'SHA1'|'SHA256')}
+                  className="w-full bg-[#0d1712] border border-emerald-500/20 rounded-xl px-2 py-3 text-xs text-white outline-none"
+                >
+                  <option value="SHA1">SHA1</option>
+                  <option value="SHA256">SHA256</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] text-zinc-400 block mb-1 font-mono">Digits</label>
+                <select
+                  value={digits}
+                  onChange={e => setDigits(Number(e.target.value) as 6|8)}
+                  className="w-full bg-[#0d1712] border border-emerald-500/20 rounded-xl px-2 py-3 text-xs text-white outline-none"
+                >
+                  <option value={6}>6 digits</option>
+                  <option value={8}>8 digits</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] text-zinc-400 block mb-1 font-mono">Period</label>
+                <select
+                  value={period}
+                  onChange={e => setPeriod(Number(e.target.value) as 30|60)}
+                  className="w-full bg-[#0d1712] border border-emerald-500/20 rounded-xl px-2 py-3 text-xs text-white outline-none"
+                >
+                  <option value={30}>30 sec</option>
+                  <option value={60}>60 sec</option>
+                </select>
+              </div>
+            </div>
 
             <div>
               <label className="text-[11px] text-zinc-400 block mb-1 font-mono">Category</label>

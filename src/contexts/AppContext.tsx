@@ -12,15 +12,7 @@ import {
   type CheckBiometryResult,
 } from '../services/biometricAuth';
 
-const INITIAL_DEMO_ACCOUNTS: AuthAccount[] = [
-  { id:'1', issuer:'Google',        accountName:'alex@gmail.com',       secret:'SECRET001', iconInitial:'G', iconBg:'from-blue-500 to-blue-700',    category:'personal', isFavorite:true,  addedAt:Date.now()-86400000*5, algorithm:'SHA1', digits:6, period:30 },
-  { id:'2', issuer:'GitHub',        accountName:'@alexdev',             secret:'SECRET002', iconInitial:'G', iconBg:'from-zinc-700 to-zinc-900',    category:'work',     isFavorite:true,  addedAt:Date.now()-86400000*4, algorithm:'SHA1', digits:6, period:30 },
-  { id:'3', issuer:'Binance',       accountName:'pro.trader#8841',      secret:'SECRET003', iconInitial:'B', iconBg:'from-yellow-500 to-amber-600', category:'crypto',   isFavorite:true,  addedAt:Date.now()-86400000*3, algorithm:'SHA1', digits:6, period:30 },
-  { id:'4', issuer:'AWS Cloud',     accountName:'root@aws',             secret:'SECRET004', iconInitial:'A', iconBg:'from-orange-500 to-amber-600', category:'work',     isFavorite:false, addedAt:Date.now()-86400000*2, algorithm:'SHA1', digits:6, period:30 },
-  { id:'5', issuer:'ProtonMail',    accountName:'vault@proton.me',      secret:'SECRET005', iconInitial:'P', iconBg:'from-purple-600 to-violet-800',category:'personal', isFavorite:false, addedAt:Date.now()-86400000*1, algorithm:'SHA1', digits:6, period:30 },
-  { id:'6', issuer:'Discord',       accountName:'nexauser#1234',        secret:'SECRET006', iconInitial:'D', iconBg:'from-indigo-500 to-indigo-700',category:'social',   isFavorite:false, addedAt:Date.now()-86400000,   algorithm:'SHA1', digits:6, period:30 },
-  { id:'7', issuer:'Coinbase Pro',  accountName:'crypto.alex@cb.com',   secret:'SECRET007', iconInitial:'C', iconBg:'from-blue-600 to-cyan-600',    category:'crypto',   isFavorite:false, addedAt:Date.now()-3600000,    algorithm:'SHA1', digits:6, period:30 },
-];
+const INITIAL_DEMO_ACCOUNTS: AuthAccount[] = [];
 
 const DEFAULT_SETTINGS: AppSettings = {
   biometricEnabled: false,

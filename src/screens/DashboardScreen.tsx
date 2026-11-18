@@ -23,10 +23,11 @@ const TokenCard: React.FC<{
   onDetail: (a: AuthAccount) => void;
   copiedId: string | null;
 }> = ({ account, now, secsLeft, hideTokens, onCopy, onDetail, copiedId }) => {
-  const code = generateTOTP(account.secret, now, account.period);
+  const code = generateTOTP(account.secret, now, account.period, account.digits, account.algorithm);
+  const accountSecondsLeft = getSecondsRemaining(now, account.period);
   const isCopied = copiedId === account.id;
-  const isUrgent = secsLeft <= 5;
-  const pct = (secsLeft / account.period) * 100;
+  const isUrgent = accountSecondsLeft <= 5;
+  const pct = (accountSecondsLeft / account.period) * 100;
 
   return (
     <motion.div
@@ -152,7 +153,6 @@ export const DashboardScreen: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setHideTokens(h => !h)}
-            aria-label={hideTokens ? 'Show tokens' : 'Hide tokens'}
             className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-zinc-300 hover:border-emerald-500/40 transition cursor-pointer"
             title={hideTokens ? 'Show tokens' : 'Hide tokens'}
           >
@@ -160,7 +160,6 @@ export const DashboardScreen: React.FC = () => {
           </button>
           <button
             onClick={lock}
-            aria-label="Lock Vault"
             className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-zinc-300 hover:border-red-500/40 hover:text-red-400 transition cursor-pointer"
             title="Lock Vault"
           >
@@ -168,7 +167,6 @@ export const DashboardScreen: React.FC = () => {
           </button>
           <button
             onClick={() => setScreen('profile')}
-            aria-label="Open Profile"
             className="w-8 h-8 rounded-xl overflow-hidden bg-gradient-to-br from-[#ff2e4d] to-[#00c853] flex items-center justify-center font-bold text-white text-sm shadow-md cursor-pointer border border-emerald-500/30"
           >
             {user?.avatar ? (

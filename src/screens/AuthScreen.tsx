@@ -477,8 +477,7 @@ export const AuthScreen: React.FC = () => {
                 )}
               </motion.button>
 
-              {!GOOGLE_AUTH_CONFIG.clientId && (
-                <motion.button
+              <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={() => {
                     setUser({
@@ -496,8 +495,7 @@ export const AuthScreen: React.FC = () => {
                 >
                   <Shield className="w-4 h-4" />
                   Continue in Local Vault
-                </motion.button>
-              )}
+              </motion.button>
 
               {/* Trust badges footer */}
               <div className="flex items-center justify-center gap-3 pt-1 text-[9px] font-mono text-zinc-500">
