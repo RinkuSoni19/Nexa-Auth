@@ -23,7 +23,7 @@ const TokenCard: React.FC<{
   onDetail: (a: AuthAccount) => void;
   copiedId: string | null;
 }> = ({ account, now, secsLeft, hideTokens, onCopy, onDetail, copiedId }) => {
-  const code = generateTOTP(account.secret, now, account.period);
+  const code = generateTOTP(account.secret, now, account.period, account.digits, account.algorithm);
   const isCopied = copiedId === account.id;
   const isUrgent = secsLeft <= 5;
   const pct = (secsLeft / account.period) * 100;

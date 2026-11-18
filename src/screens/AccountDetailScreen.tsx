@@ -23,7 +23,7 @@ export const AccountDetailScreen: React.FC = () => {
 
   if (!acc) { setScreen('dashboard'); return null; }
 
-  const code = generateTOTP(acc.secret, now, acc.period);
+  const code = generateTOTP(acc.secret, now, acc.period, acc.digits, acc.algorithm);
   const pct = (secsLeft / acc.period) * 100;
   const isUrgent = secsLeft <= 5;
 

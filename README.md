@@ -74,6 +74,22 @@ npm install
 npm run dev
 ```
 
+### Email OTP delivery setup
+
+The app uses a local mailer for server-generated, expiring OTP codes:
+
+```bash
+npm run mailer
+```
+
+Configure one delivery provider in `server/email-config.json`:
+
+- Gmail: set `gmailUser` and a Gmail App Password as `gmailAppPassword`
+- Resend: set `resendApiKey`
+- Custom SMTP: set the `smtp.host`, `smtp.port`, `smtp.secure`, `smtp.auth.user`, and `smtp.auth.pass` fields
+
+Environment variables are also supported: `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `RESEND_API_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASS`.
+
 ### Build for Production & Android APK
 
 ```bash

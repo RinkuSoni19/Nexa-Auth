@@ -7,7 +7,7 @@ import {
 import { useApp } from '../contexts/AppContext';
 import { User } from '../types';
 import { GOOGLE_AUTH_CONFIG, parseJwt } from '../config/googleAuth';
-import { sendEmailOtp } from '../services/emailService';
+import { sendEmailOtp, verifyEmailOtp } from '../services/emailService';
 import confetti from 'canvas-confetti';
 
 type Step = 'landing' | 'otp-verify' | 'success';
@@ -63,7 +63,6 @@ export const AuthScreen: React.FC = () => {
   const [selectedAccount, setSelectedAccount] = useState<GoogleAccountItem>(PHONE_ACTIVE_ACCOUNTS[0]);
   
   // OTP state
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isVerifying, setIsVerifying] = useState(false);
   const [timer, setTimer] = useState(30);
@@ -124,16 +123,14 @@ export const AuthScreen: React.FC = () => {
     setShowAccountChooser(false);
     setShowAddCustom(false);
 
-    // Generate random 6-digit OTP
-    const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(randomCode);
-
     showToast(`Sending 2FA OTP to ${account.email}…`);
 
     // Dispatch OTP to user's email
-    sendEmailOtp(account.email, randomCode, account.name).then((res) => {
+    sendEmailOtp(account.email, account.name).then((res) => {
       if (res.realEmailSent) {
         showToast(`📬 OTP delivered to ${account.email} inbox!`);
+      } else if (!res.success) {
+        showToast(res.error || 'Could not send OTP');
       }
     });
 
@@ -261,72 +258,65 @@ export const AuthScreen: React.FC = () => {
 
   // Auto-Fill Code from Notification
   const handleAutoFill = () => {
-    if (!generatedOtp) return;
-    setOtp(generatedOtp.split(''));
-    showToast('Code auto-filled from Google Alert!');
-    handleVerifyOtp(generatedOtp);
+    showToast('Enter the code received in your email');
   };
 
   // Resend OTP
   const handleResendOtp = () => {
-    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(newCode);
     setTimer(30);
     setOtp(['', '', '', '', '', '']);
     setShowNotification(true);
 
     // Dispatch fresh OTP to user's email
-    sendEmailOtp(selectedAccount.email, newCode, selectedAccount.name).then((res) => {
+    sendEmailOtp(selectedAccount.email, selectedAccount.name).then((res) => {
       if (res.realEmailSent) {
         showToast(`📬 New OTP delivered to ${selectedAccount.email} inbox!`);
+      } else if (!res.success) {
+        showToast(res.error || 'Could not resend OTP');
       }
     });
-
-    showToast(`New code sent to ${selectedAccount.email}`);
   };
 
   // Verify OTP and open Plan Selection Window
-  const handleVerifyOtp = (codeToCheck?: string) => {
+  const handleVerifyOtp = async (codeToCheck?: string) => {
     const code = codeToCheck || otp.join('');
     if (code.length !== 6) {
       showToast('Please enter the complete 6-digit code');
       return;
     }
 
-    if (code !== generatedOtp && code !== '123456') {
-      showToast('Incorrect OTP! Please check the code sent to your email.');
+    setIsVerifying(true);
+    const result = await verifyEmailOtp(selectedAccount.email, code);
+    setIsVerifying(false);
+
+    if (!result.success) {
+      showToast(result.error || 'Incorrect OTP');
       return;
     }
 
-    setIsVerifying(true);
+    const loggedUser: User = {
+      name: selectedAccount.name,
+      email: selectedAccount.email,
+      isEmailVerified: true,
+      isPhoneVerified: false,
+      authMethod: 'google',
+      joinedAt: Date.now(),
+      plan: 'trial-7d',
+    };
+
+    setUser(loggedUser);
+    setStep('success');
+    showToast('Google ID verified! Opening Security Plans…');
+    confetti({
+      particleCount: 85,
+      spread: 90,
+      origin: { y: 0.55 },
+      colors: ['#00ff88', '#00e5ff', '#ffd700', '#ffffff'],
+    });
+
     setTimeout(() => {
-      setIsVerifying(false);
-
-      const loggedUser: User = {
-        name: selectedAccount.name,
-        email: selectedAccount.email,
-        isEmailVerified: true,
-        isPhoneVerified: false,
-        authMethod: 'google',
-        joinedAt: Date.now(),
-        plan: 'trial-7d',
-      };
-
-      setUser(loggedUser);
-      setStep('success');
-      showToast('Google ID verified! Opening Security Plans…');
-      confetti({
-        particleCount: 85,
-        spread: 90,
-        origin: { y: 0.55 },
-        colors: ['#00ff88', '#00e5ff', '#ffd700', '#ffffff'],
-      });
-
-      // Navigate to 'plans' window as requested!
-      setTimeout(() => {
-        setScreen('plans');
-      }, 1400);
-    }, 1100);
+      setScreen('plans');
+    }, 1400);
   };
 
   return (
@@ -336,9 +326,9 @@ export const AuthScreen: React.FC = () => {
       <div className="absolute top-1/2 -right-20 w-72 h-72 bg-[#ff2e4d]/10 rounded-full blur-[80px] pointer-events-none" />
       <div className="absolute inset-0 cyber-grid opacity-15 pointer-events-none" />
 
-      {/* ── SIMULATED GOOGLE 2FA NOTIFICATION ALERT ── */}
+      {/* ── GOOGLE 2FA EMAIL DELIVERY ALERT ── */}
       <AnimatePresence>
-        {showNotification && generatedOtp && (
+        {showNotification && (
           <motion.div
             initial={{ opacity: 0, y: -50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -356,7 +346,7 @@ export const AuthScreen: React.FC = () => {
                   <span className="text-[9px] text-zinc-400">• Just now</span>
                 </div>
                 <p className="text-xs font-mono text-zinc-200 truncate">
-                  Verification OTP: <span className="font-black text-emerald-300 tracking-widest text-sm bg-black/40 px-1.5 py-0.5 rounded border border-emerald-500/40">{generatedOtp}</span>
+                  Code sent to {selectedAccount.email}
                 </p>
               </div>
             </div>
@@ -366,7 +356,7 @@ export const AuthScreen: React.FC = () => {
               className="px-2.5 py-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black text-[11px] font-bold font-mono flex items-center gap-1 cursor-pointer transition active:scale-95 flex-shrink-0 shadow"
             >
               <Sparkles className="w-3 h-3" />
-              <span>Auto-Fill</span>
+              <span>Got it</span>
             </button>
           </motion.div>
         )}
@@ -631,7 +621,7 @@ export const AuthScreen: React.FC = () => {
             </div>
 
             <p className="text-center text-[10px] text-zinc-500 font-mono pt-4">
-              Tip: Tap the Google notification banner above to auto-fill instantly.
+              Tip: Check your email inbox or spam folder for the 6-digit code.
             </p>
           </motion.div>
         )}
