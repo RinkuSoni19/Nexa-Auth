@@ -16,14 +16,14 @@ export const AccountDetailScreen: React.FC = () => {
     const id = setInterval(() => {
       const t = Date.now();
       setNow(t);
-      setSecsLeft(getSecondsRemaining(t, acc?.period || 30));
+      setSecsLeft(getSecondsRemaining(t));
     }, 1000);
     return () => clearInterval(id);
-  }, [acc?.period]);
+  }, []);
 
   if (!acc) { setScreen('dashboard'); return null; }
 
-  const code = generateTOTP(acc.secret, now, acc.period, acc.digits, acc.algorithm);
+  const code = generateTOTP(acc.secret, now, acc.period);
   const pct = (secsLeft / acc.period) * 100;
   const isUrgent = secsLeft <= 5;
 
@@ -48,12 +48,19 @@ export const AccountDetailScreen: React.FC = () => {
 
       {/* Header */}
       <div className="relative z-10 flex items-center justify-between px-4 pt-9 pb-3.5 border-b border-emerald-500/10 bg-[#030705]/95 backdrop-blur-xl">
-        <button onClick={() => setScreen('dashboard')} className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 cursor-pointer hover:border-emerald-500/40 transition">
+        <button
+          onClick={() => setScreen('dashboard')}
+          aria-label="Back to Vault"
+          className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 cursor-pointer hover:border-emerald-500/40 transition"
+        >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <span className="font-bold text-white">{acc.issuer}</span>
-        <button onClick={() => { toggleFavorite(acc.id); showToast(acc.isFavorite ? 'Removed from favorites' : 'Added to favorites'); }}
-          className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 cursor-pointer hover:border-yellow-500/40 transition">
+        <button
+          onClick={() => { toggleFavorite(acc.id); showToast(acc.isFavorite ? 'Removed from favorites' : 'Added to favorites'); }}
+          aria-label={acc.isFavorite ? `Remove ${acc.issuer} from favorites` : `Add ${acc.issuer} to favorites`}
+          className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 cursor-pointer hover:border-yellow-500/40 transition"
+        >
           <Star className={`w-4 h-4 ${acc.isFavorite ? 'text-yellow-400 fill-yellow-400' : 'text-zinc-400'}`} />
         </button>
       </div>
@@ -93,13 +100,41 @@ export const AccountDetailScreen: React.FC = () => {
             </div>
           </div>
 
-          {/* The big code */}
+          {/* The big tappable code — tapping automatically copies OTP to clipboard */}
           <div className="text-center mb-4">
-            <div className={`text-5xl font-black font-mono tracking-[0.15em] transition-all ${isUrgent ? 'text-red-400' : 'text-[#00ff88]'} ${hidden ? 'blur-md' : ''}`}
-              style={{ textShadow: `0 0 24px ${isUrgent ? 'rgba(239,68,68,0.6)' : 'rgba(0,255,136,0.5)'}` }}>
-              {hidden ? '••• •••' : formatCode(code)}
-            </div>
-            <p className="text-xs text-zinc-500 mt-1 font-mono">Auto-refreshes every {acc.period}s</p>
+            <button
+              type="button"
+              onClick={handleCopy}
+              aria-label={`Copy OTP code ${hidden ? 'hidden' : formatCode(code)}`}
+              data-testid="detail-otp-tap-copy"
+              className={`group w-full py-2.5 px-3 rounded-2xl border transition-all cursor-pointer active:scale-[0.98] ${
+                copied
+                  ? 'bg-emerald-500/15 border-emerald-400/60 shadow-[0_0_24px_rgba(0,255,136,0.2)]'
+                  : 'bg-transparent border-transparent hover:bg-emerald-500/5 hover:border-emerald-500/25'
+              }`}
+            >
+              <div
+                className={`text-5xl font-black font-mono tracking-[0.15em] transition-all ${
+                  isUrgent ? 'text-red-400' : 'text-[#00ff88]'
+                } ${hidden ? 'blur-md' : ''}`}
+                style={{ textShadow: `0 0 24px ${isUrgent ? 'rgba(239,68,68,0.6)' : 'rgba(0,255,136,0.5)'}` }}
+              >
+                {hidden ? '••• •••' : formatCode(code)}
+              </div>
+              <div className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] font-mono">
+                {copied ? (
+                  <span className="text-emerald-300 font-bold flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" />
+                    Copied to clipboard!
+                  </span>
+                ) : (
+                  <span className="text-zinc-500 group-hover:text-emerald-400 transition-colors flex items-center gap-1">
+                    <Copy className="w-3 h-3" />
+                    Tap code to copy • refreshes every {acc.period}s
+                  </span>
+                )}
+              </div>
+            </button>
           </div>
 
           {/* Action buttons */}

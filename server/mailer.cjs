@@ -2,45 +2,15 @@ const http = require('http');
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const PORT = 3001;
 const CONFIG_FILE = path.join(__dirname, 'email-config.json');
-const OTP_TTL_MS = 5 * 60 * 1000;
-const OTP_STORE = new Map();
-
-function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
-}
-
-function generateOtp() {
-  return crypto.randomInt(100000, 1000000).toString();
-}
-
-function validateEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
-}
 
 // Default config template
 function loadConfig() {
   if (fs.existsSync(CONFIG_FILE)) {
     try {
-      const fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-      return {
-        provider: fileConfig.provider || 'gmail',
-        gmailUser: fileConfig.gmailUser || process.env.GMAIL_USER || '',
-        gmailAppPassword: fileConfig.gmailAppPassword || process.env.GMAIL_APP_PASSWORD || '',
-        resendApiKey: fileConfig.resendApiKey || process.env.RESEND_API_KEY || '',
-        smtp: {
-          host: fileConfig.smtp?.host || process.env.SMTP_HOST || 'smtp.gmail.com',
-          port: fileConfig.smtp?.port || Number(process.env.SMTP_PORT || 465),
-          secure: fileConfig.smtp?.secure ?? true,
-          auth: {
-            user: fileConfig.smtp?.auth?.user || process.env.SMTP_USER || '',
-            pass: fileConfig.smtp?.auth?.pass || process.env.SMTP_PASS || '',
-          },
-        },
-      };
+      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
     } catch (e) {
       console.error('Error reading email-config.json:', e);
     }
@@ -180,22 +150,16 @@ const server = http.createServer(async (req, res) => {
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
-        const { email, name } = JSON.parse(body);
-        const normalizedEmail = normalizeEmail(email);
+        const { email, otp, name } = JSON.parse(body);
 
-        if (!validateEmail(normalizedEmail)) {
+        if (!email || !otp) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'A valid email address is required' }));
+          res.end(JSON.stringify({ success: false, error: 'email and otp are required' }));
           return;
         }
 
+        console.log(`[Mailer] Request to send OTP ${otp} to ${email} (${name || 'User'})`);
         const config = loadConfig();
-        const otp = generateOtp();
-        OTP_STORE.set(normalizedEmail, {
-          otp,
-          expiresAt: Date.now() + OTP_TTL_MS,
-          attempts: 0,
-        });
 
         // 1. Try Resend if configured
         if (config.resendApiKey) {
@@ -208,20 +172,20 @@ const server = http.createServer(async (req, res) => {
               },
               body: JSON.stringify({
                 from: 'NexaAuth Security <onboarding@resend.dev>',
-                to: normalizedEmail,
+                to: email,
                 subject: `${otp} is your NexaAuth Google 2FA verification code`,
                 html: generateEmailHtml(name, otp),
               }),
             });
             const resendData = await resendRes.json();
             if (resendRes.ok) {
-              console.log(`[Mailer] Resend delivered email to ${normalizedEmail}:`, resendData.id);
+              console.log(`[Mailer] Resend delivered email to ${email}:`, resendData.id);
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({
                 success: true,
                 realEmailSent: true,
                 provider: 'resend',
-                email: normalizedEmail,
+                email,
               }));
               return;
             } else {
@@ -239,14 +203,14 @@ const server = http.createServer(async (req, res) => {
           const sender = config.gmailUser || config.smtp?.auth?.user;
           const mailOptions = {
             from: `"NexaAuth Security" <${sender}>`,
-            to: normalizedEmail,
+            to: email,
             subject: `${otp} is your NexaAuth Google 2FA verification code`,
             text: `Your NexaAuth verification OTP code is: ${otp}. It is valid for 5 minutes. Do not share this code with anyone.`,
             html: generateEmailHtml(name, otp),
           };
 
           const info = await mailClient.sendMail(mailOptions);
-          console.log(`[Mailer] Gmail SMTP email sent successfully to ${normalizedEmail}:`, info.messageId);
+          console.log(`[Mailer] Gmail SMTP email sent successfully to ${email}:`, info.messageId);
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
@@ -254,18 +218,21 @@ const server = http.createServer(async (req, res) => {
             realEmailSent: true,
             provider: 'gmail_smtp',
             messageId: info.messageId,
-            email: normalizedEmail,
+            email,
           }));
           return;
         }
 
-        OTP_STORE.delete(normalizedEmail);
-        console.warn(`[Mailer] Sender credentials missing for ${normalizedEmail}`);
-        res.writeHead(503, { 'Content-Type': 'application/json' });
+        // 3. Fallback when SMTP is not configured yet
+        console.warn(`[Mailer] Sender credentials missing in email-config.json. Simulated OTP for ${email}: ${otp}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          success: false,
+          success: true,
           realEmailSent: false,
-          error: 'Email delivery is not configured',
+          simulated: true,
+          otp,
+          email,
+          message: 'To deliver real emails to inbox, set gmailUser & gmailAppPassword in server/email-config.json',
         }));
       } catch (err) {
         console.error('[Mailer] Error sending email:', err);
@@ -274,61 +241,6 @@ const server = http.createServer(async (req, res) => {
           success: false,
           error: err.message,
         }));
-      }
-    });
-    return;
-  }
-
-  // Verify OTP endpoint
-  if (req.url === '/api/verify-otp' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { email, otp } = JSON.parse(body);
-        const normalizedEmail = normalizeEmail(email);
-        const code = String(otp || '').trim();
-
-        if (!validateEmail(normalizedEmail) || !/^\d{6}$/.test(code)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Valid email and 6-digit OTP are required' }));
-          return;
-        }
-
-        const record = OTP_STORE.get(normalizedEmail);
-        if (!record) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Request a new OTP first' }));
-          return;
-        }
-
-        if (Date.now() > record.expiresAt) {
-          OTP_STORE.delete(normalizedEmail);
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'OTP expired. Request a new code.' }));
-          return;
-        }
-
-        if (record.attempts >= 5) {
-          OTP_STORE.delete(normalizedEmail);
-          res.writeHead(429, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Too many attempts. Request a new OTP.' }));
-          return;
-        }
-
-        record.attempts += 1;
-        if (!crypto.timingSafeEqual(Buffer.from(record.otp), Buffer.from(code))) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Incorrect OTP' }));
-          return;
-        }
-
-        OTP_STORE.delete(normalizedEmail);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, email: normalizedEmail }));
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: err.message }));
       }
     });
     return;

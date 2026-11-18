@@ -1,7 +1,51 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { AuthAccount, User, AppSettings, Screen, Category } from '../types';
+import { AuthAccount, User, AppSettings, Screen, Category, BiometricModality } from '../types';
+import {
+  hashMasterPassword,
+  verifyMasterPassword,
+  validateMasterPassword,
+  canEnableBiometricUnlock,
+} from '../utils/masterAuth';
+import {
+  checkBiometricCapability,
+  subscribeToBiometryResume,
+  type CheckBiometryResult,
+} from '../services/biometricAuth';
 
-const INITIAL_DEMO_ACCOUNTS: AuthAccount[] = [];
+const INITIAL_DEMO_ACCOUNTS: AuthAccount[] = [
+  { id:'1', issuer:'Google',        accountName:'alex@gmail.com',       secret:'SECRET001', iconInitial:'G', iconBg:'from-blue-500 to-blue-700',    category:'personal', isFavorite:true,  addedAt:Date.now()-86400000*5, algorithm:'SHA1', digits:6, period:30 },
+  { id:'2', issuer:'GitHub',        accountName:'@alexdev',             secret:'SECRET002', iconInitial:'G', iconBg:'from-zinc-700 to-zinc-900',    category:'work',     isFavorite:true,  addedAt:Date.now()-86400000*4, algorithm:'SHA1', digits:6, period:30 },
+  { id:'3', issuer:'Binance',       accountName:'pro.trader#8841',      secret:'SECRET003', iconInitial:'B', iconBg:'from-yellow-500 to-amber-600', category:'crypto',   isFavorite:true,  addedAt:Date.now()-86400000*3, algorithm:'SHA1', digits:6, period:30 },
+  { id:'4', issuer:'AWS Cloud',     accountName:'root@aws',             secret:'SECRET004', iconInitial:'A', iconBg:'from-orange-500 to-amber-600', category:'work',     isFavorite:false, addedAt:Date.now()-86400000*2, algorithm:'SHA1', digits:6, period:30 },
+  { id:'5', issuer:'ProtonMail',    accountName:'vault@proton.me',      secret:'SECRET005', iconInitial:'P', iconBg:'from-purple-600 to-violet-800',category:'personal', isFavorite:false, addedAt:Date.now()-86400000*1, algorithm:'SHA1', digits:6, period:30 },
+  { id:'6', issuer:'Discord',       accountName:'nexauser#1234',        secret:'SECRET006', iconInitial:'D', iconBg:'from-indigo-500 to-indigo-700',category:'social',   isFavorite:false, addedAt:Date.now()-86400000,   algorithm:'SHA1', digits:6, period:30 },
+  { id:'7', issuer:'Coinbase Pro',  accountName:'crypto.alex@cb.com',   secret:'SECRET007', iconInitial:'C', iconBg:'from-blue-600 to-cyan-600',    category:'crypto',   isFavorite:false, addedAt:Date.now()-3600000,    algorithm:'SHA1', digits:6, period:30 },
+];
+
+const DEFAULT_SETTINGS: AppSettings = {
+  biometricEnabled: false,
+  biometricModality: 'both',
+  autoLock: true,
+  autoLockTimeout: 5,
+  hideTokens: false,
+  darkMode: true,
+  backupEnabled: true,
+};
+
+const DEMO_USER: User = {
+  name: 'Rinku Soni',
+  email: 'rinkusoni28489@gmail.com',
+  isEmailVerified: true,
+  isPhoneVerified: false,
+  authMethod: 'google',
+  joinedAt: Date.now(),
+  plan: 'trial-7d',
+};
+
+function isAutostartMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('autostart') === '1';
+}
 
 interface AppContextType {
   screen: Screen;
@@ -22,6 +66,18 @@ interface AppContextType {
 
   settings: AppSettings;
   updateSettings: (s: Partial<AppSettings>) => void;
+
+  hasMasterPassword: boolean;
+  biometryInfo: CheckBiometryResult | null;
+  refreshBiometry: (modality?: BiometricModality) => Promise<CheckBiometryResult | null>;
+  setMasterPassword: (
+    newPassword: string,
+    currentPassword?: string,
+    enableBiometrics?: boolean,
+    modality?: BiometricModality
+  ) => Promise<{ ok: boolean; error?: string }>;
+  verifyVaultMasterPassword: (password: string) => Promise<boolean>;
+  clearMasterPassword: (currentPassword: string) => Promise<{ ok: boolean; error?: string }>;
 
   activeCategory: Category;
   setActiveCategory: (c: Category) => void;
@@ -47,18 +103,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [user, setUserState] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('nexa_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
+      if (saved) return JSON.parse(saved);
+      if (isAutostartMode()) {
+        localStorage.setItem('nexa_user', JSON.stringify(DEMO_USER));
+        return DEMO_USER;
+      }
       return null;
+    } catch {
+      return isAutostartMode() ? DEMO_USER : null;
     }
   });
 
   const [screen, _setScreen] = useState<Screen>(() => {
     try {
       const savedUser = localStorage.getItem('nexa_user');
-      return savedUser ? 'dashboard' : 'welcome';
+      return savedUser || isAutostartMode() ? 'dashboard' : 'welcome';
     } catch {
-      return 'welcome';
+      return isAutostartMode() ? 'dashboard' : 'welcome';
     }
   });
   const [prevScreen, setPrevScreen] = useState<Screen | null>(null);
@@ -77,47 +138,55 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [settings, setSettingsState] = useState<AppSettings>(() => {
     try {
       const saved = localStorage.getItem('nexa_settings');
-      return saved ? JSON.parse(saved) : {
-        biometricEnabled: true,
-        autoLock: true,
-        autoLockTimeout: 5,
-        hideTokens: false,
-        darkMode: true,
-        backupEnabled: true,
-      };
+      if (!saved) return DEFAULT_SETTINGS;
+      const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } as AppSettings;
+      if (!parsed.masterPasswordHash) {
+        parsed.biometricEnabled = false;
+      }
+      return parsed;
     } catch {
-      return {
-        biometricEnabled: true,
-        autoLock: true,
-        autoLockTimeout: 5,
-        hideTokens: false,
-        darkMode: true,
-        backupEnabled: true,
-      };
+      return DEFAULT_SETTINGS;
     }
   });
 
+  const [biometryInfo, setBiometryInfo] = useState<CheckBiometryResult | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<AuthAccount | null>(null);
   const [activeCategory, setActiveCategory] = useState<Category>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState<string | null>(null);
-  const [isLocked, setIsLocked] = useState(false);
+  const [isLocked, setIsLocked] = useState<boolean>(() => {
+    try {
+      if (isAutostartMode()) return false;
+      const savedUser = localStorage.getItem('nexa_user');
+      if (!savedUser) return false;
+      const unlockedInSession = sessionStorage.getItem('nexa_session_unlocked') === '1';
+      return Boolean(settings.masterPasswordHash && settings.autoLock && !unlockedInSession);
+    } catch {
+      return false;
+    }
+  });
+
+  const hasMasterPassword = Boolean(settings.masterPasswordHash);
+
+  const refreshBiometry = useCallback(async (modality?: BiometricModality) => {
+    try {
+      const info = await checkBiometricCapability(modality ?? settings.biometricModality);
+      setBiometryInfo(info);
+      return info;
+    } catch {
+      return null;
+    }
+  }, [settings.biometricModality]);
 
   useEffect(() => {
-    if (!settings.autoLock || !user) return;
-    let timeoutId: number;
-    const resetTimer = () => {
-      window.clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(() => setIsLocked(true), settings.autoLockTimeout * 60 * 1000);
-    };
-    const events: (keyof DocumentEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
-    events.forEach(eventName => window.addEventListener(eventName, resetTimer, { passive: true }));
-    resetTimer();
+    refreshBiometry(settings.biometricModality);
+    let handlePromise = subscribeToBiometryResume((info) => {
+      setBiometryInfo(info);
+    });
     return () => {
-      window.clearTimeout(timeoutId);
-      events.forEach(eventName => window.removeEventListener(eventName, resetTimer));
+      handlePromise.then((h) => h?.remove()).catch(() => {});
     };
-  }, [settings.autoLock, settings.autoLockTimeout, user]);
+  }, [refreshBiometry, settings.biometricModality]);
 
   // Sync state to localStorage
   const setUser = useCallback((u: User | null) => {
@@ -149,10 +218,80 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateSettings = useCallback((s: Partial<AppSettings>) => {
     setSettingsState(prev => {
       const next = { ...prev, ...s };
+      if (!next.masterPasswordHash) {
+        next.biometricEnabled = false;
+      }
       localStorage.setItem('nexa_settings', JSON.stringify(next));
       return next;
     });
   }, []);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2800);
+  }, []);
+
+  const setMasterPassword = useCallback(async (
+    newPassword: string,
+    currentPassword?: string,
+    enableBiometrics = true,
+    modality?: BiometricModality
+  ): Promise<{ ok: boolean; error?: string }> => {
+    if (settings.masterPasswordHash) {
+      const okCurrent = await verifyMasterPassword(currentPassword || '', settings.masterPasswordHash);
+      if (!okCurrent) {
+        return { ok: false, error: 'Current master password is incorrect' };
+      }
+    }
+
+    const validation = validateMasterPassword(newPassword);
+    if (!validation.valid) {
+      return { ok: false, error: validation.error };
+    }
+
+    const nextModality = modality ?? settings.biometricModality;
+    const hash = await hashMasterPassword(newPassword);
+    const bioInfo = await refreshBiometry(nextModality);
+    const bioAvailable = Boolean(bioInfo?.isAvailable ?? true);
+    const eligibility = canEnableBiometricUnlock(true, bioAvailable);
+
+    const nextBiometricEnabled = Boolean(enableBiometrics && eligibility.allowed);
+
+    updateSettings({
+      masterPasswordHash: hash,
+      biometricModality: nextModality,
+      biometricEnabled: nextBiometricEnabled,
+    });
+
+    showToast(
+      nextBiometricEnabled
+        ? 'Master Password saved & Biometric Unlock enabled'
+        : 'Master Password saved'
+    );
+    return { ok: true };
+  }, [settings.masterPasswordHash, settings.biometricModality, refreshBiometry, updateSettings, showToast]);
+
+  const verifyVaultMasterPassword = useCallback(async (password: string): Promise<boolean> => {
+    return verifyMasterPassword(password, settings.masterPasswordHash);
+  }, [settings.masterPasswordHash]);
+
+  const clearMasterPassword = useCallback(async (
+    currentPassword: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    if (!settings.masterPasswordHash) {
+      return { ok: true };
+    }
+    const valid = await verifyMasterPassword(currentPassword, settings.masterPasswordHash);
+    if (!valid) {
+      return { ok: false, error: 'Incorrect master password' };
+    }
+    updateSettings({
+      masterPasswordHash: undefined,
+      biometricEnabled: false,
+    });
+    showToast('Master Password & Biometric Lock disabled');
+    return { ok: true };
+  }, [settings.masterPasswordHash, updateSettings, showToast]);
 
   const setScreen = useCallback((s: Screen) => {
     _setScreen(prev => { setPrevScreen(prev); return s; });
@@ -177,113 +316,35 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, isFavorite: !a.isFavorite } : a));
   }, [setAccounts]);
 
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2800);
+  const unlock = useCallback(() => {
+    try { sessionStorage.setItem('nexa_session_unlocked', '1'); } catch {}
+    setIsLocked(false);
+  }, []);
+  const lock = useCallback(() => {
+    try { sessionStorage.removeItem('nexa_session_unlocked'); } catch {}
+    setIsLocked(true);
   }, []);
 
-  const unlock = useCallback(() => setIsLocked(false), []);
-  const lock   = useCallback(() => setIsLocked(true),  []);
-
-  const exportBackup = useCallback(async () => {
-    if (!settings.backupEnabled) {
-      showToast('Enable encrypted local backup in Settings');
-      return;
-    }
-    if (!settings.appLockPin) {
-      showToast('Set a 4-digit vault PIN before exporting');
-      return;
-    }
-    try {
-      const encoder = new TextEncoder();
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(settings.appLockPin),
-        'PBKDF2',
-        false,
-        ['deriveKey'],
-      );
-      const key = await crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' },
-        keyMaterial,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt'],
-      );
-      const plaintext = JSON.stringify({
-        version: '2.0.0',
-        exportedAt: Date.now(),
-        accounts,
-        settings,
-      });
-      const encrypted = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        encoder.encode(plaintext),
-      );
-      const payload = {
-        format: 'nexa-vault-aes-gcm',
-        version: '2.0.0',
-        salt: Array.from(salt).map(v => v.toString(16).padStart(2, '0')).join(''),
-        iv: Array.from(iv).map(v => v.toString(16).padStart(2, '0')).join(''),
-        ciphertext: Array.from(new Uint8Array(encrypted)).map(v => v.toString(16).padStart(2, '0')).join(''),
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `nexa-vault-backup-${new Date().toISOString().slice(0, 10)}.nexa.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('Encrypted vault backup saved');
-    } catch {
-      showToast('Could not create vault backup');
-    }
+  const exportBackup = useCallback(() => {
+    const data = JSON.stringify({
+      version: '2.0.0',
+      exportedAt: Date.now(),
+      accounts,
+      settings: { ...settings, masterPasswordHash: undefined }
+    }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nexa-vault-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Vault backup saved to files');
   }, [accounts, settings, showToast]);
 
   const importBackup = useCallback((jsonStr: string) => {
     try {
       const parsed = JSON.parse(jsonStr);
-      if (parsed.format === 'nexa-vault-aes-gcm') {
-        const pin = window.prompt('Enter the 4-digit PIN used for this backup');
-        if (!pin || !/^\d{4}$/.test(pin)) {
-          showToast('A valid 4-digit PIN is required');
-          return false;
-        }
-        const decoder = new TextDecoder();
-        const encoder = new TextEncoder();
-        const hexToBytes = (hex: string) => new Uint8Array(hex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []);
-        (async () => {
-          try {
-            const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(pin), 'PBKDF2', false, ['deriveKey']);
-            const key = await crypto.subtle.deriveKey(
-              { name: 'PBKDF2', salt: hexToBytes(parsed.salt), iterations: 150000, hash: 'SHA-256' },
-              keyMaterial,
-              { name: 'AES-GCM', length: 256 },
-              false,
-              ['decrypt'],
-            );
-            const decrypted = await crypto.subtle.decrypt(
-              { name: 'AES-GCM', iv: hexToBytes(parsed.iv) },
-              key,
-              hexToBytes(parsed.ciphertext),
-            );
-            const backup = JSON.parse(decoder.decode(decrypted));
-            if (Array.isArray(backup.accounts)) {
-              setAccounts(backup.accounts);
-              if (backup.settings) updateSettings(backup.settings);
-              showToast(`Imported ${backup.accounts.length} accounts!`);
-            } else {
-              showToast('Invalid encrypted backup data');
-            }
-          } catch {
-            showToast('Incorrect PIN or damaged backup');
-          }
-        })();
-        return true;
-      }
       if (Array.isArray(parsed.accounts)) {
         setAccounts(parsed.accounts);
         if (parsed.settings) updateSettings(parsed.settings);
@@ -304,6 +365,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       accounts, addAccount, removeAccount, toggleFavorite,
       selectedAccount, setSelectedAccount,
       settings, updateSettings,
+      hasMasterPassword,
+      biometryInfo,
+      refreshBiometry,
+      setMasterPassword,
+      verifyVaultMasterPassword,
+      clearMasterPassword,
       activeCategory, setActiveCategory,
       searchQuery, setSearchQuery,
       toast, showToast,

@@ -41,12 +41,16 @@ export interface User {
   plan?: 'free' | 'trial-7d' | '3-months' | '1-year' | 'pro' | 'enterprise';
 }
 
+export type BiometricModality = 'fingerprint' | 'faceId' | 'both';
+
 export interface AppSettings {
   biometricEnabled: boolean;
+  biometricModality: BiometricModality;
   autoLock: boolean;
   autoLockTimeout: number; // minutes
   hideTokens: boolean;
   darkMode: boolean;
   backupEnabled: boolean;
+  masterPasswordHash?: string;
   appLockPin?: string;
 }

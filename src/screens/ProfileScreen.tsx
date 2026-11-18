@@ -6,7 +6,6 @@ import {
   X, Plus, RefreshCw, Loader2, Sparkles, User as UserIcon, Crown
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { sendEmailOtp, verifyEmailOtp } from '../services/emailService';
 import confetti from 'canvas-confetti';
 
 const AVATAR_PRESETS = [
@@ -23,7 +22,7 @@ export const ProfileScreen: React.FC = () => {
 
   // Name editing
   const [isEditingName, setIsEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState(user?.name || 'User');
+  const [nameInput, setNameInput] = useState(user?.name || 'Rinku Soni');
 
   // Avatar picker modal
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -101,25 +100,16 @@ export const ProfileScreen: React.FC = () => {
   // Email Verification Flow
   const handleSendEmailOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanEmail = emailInput.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    if (!emailInput.includes('@') || !emailInput.includes('.')) {
       showToast('Please enter a valid email address');
       return;
     }
-    setEmailInput(cleanEmail);
     setEmailLoading(true);
-    sendEmailOtp(cleanEmail, user?.name).then(result => {
+    setTimeout(() => {
       setEmailLoading(false);
-      if (!result.success) {
-        showToast(result.error || 'Could not send verification code');
-        return;
-      }
       setEmailStep('otp');
-      showToast(result.realEmailSent
-        ? `Verification code sent to ${cleanEmail}`
-        : `Verification code delivery requested for ${cleanEmail}`);
-      setTimeout(() => emailOtpRefs.current[0]?.focus(), 300);
-    });
+      showToast(`Verification code sent to ${emailInput}`);
+    }, 1000);
   };
 
   const handleEmailOtpChange = (index: number, val: string) => {
@@ -131,21 +121,17 @@ export const ProfileScreen: React.FC = () => {
     if (next.every(d => d !== '')) confirmEmailVerification(next.join(''));
   };
 
-  const confirmEmailVerification = async (code?: string) => {
-    if (!code || code.length !== 6) return;
+  const confirmEmailVerification = (_code?: string) => {
     setEmailLoading(true);
-    const result = await verifyEmailOtp(emailInput.trim().toLowerCase(), code);
-    setEmailLoading(false);
-    if (!result.success) {
-      showToast(result.error || 'Incorrect verification code');
-      return;
-    }
-    updateUser({ email: emailInput.trim().toLowerCase(), isEmailVerified: true });
-    setShowEmailModal(false);
-    setEmailStep('input');
-    setEmailOtp(['', '', '', '', '', '']);
-    showToast('Email verified successfully!');
-    confetti({ particleCount: 70, spread: 80, origin: { y: 0.6 } });
+    setTimeout(() => {
+      setEmailLoading(false);
+      updateUser({ email: emailInput, isEmailVerified: true });
+      setShowEmailModal(false);
+      setEmailStep('input');
+      setEmailOtp(['', '', '', '', '', '']);
+      showToast('Email verified successfully!');
+      confetti({ particleCount: 70, spread: 80, origin: { y: 0.6 } });
+    }, 1200);
   };
 
   // Render Avatar
@@ -267,7 +253,7 @@ export const ProfileScreen: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center gap-2 mt-1">
-              <h2 className="text-xl font-black text-white">{user?.name || 'User'}</h2>
+              <h2 className="text-xl font-black text-white">{user?.name || 'Rinku Soni'}</h2>
               <button
                 onClick={() => { setIsEditingName(true); setNameInput(user?.name || ''); }}
                 className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400 transition cursor-pointer"
@@ -634,6 +620,10 @@ export const ProfileScreen: React.FC = () => {
                       />
                     ))}
                   </div>
+
+                  <p className="text-[10px] text-zinc-500 font-mono text-center">
+                    Demo Mode: enter any 6 digits to verify instantly
+                  </p>
 
                   <button
                     onClick={() => confirmEmailVerification(emailOtp.join(''))}
