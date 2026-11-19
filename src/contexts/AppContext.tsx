@@ -11,6 +11,8 @@ import {
   subscribeToBiometryResume,
   type CheckBiometryResult,
 } from '../services/biometricAuth';
+import { auth, onAuthStateChanged, signOutFirebase } from '../firebase';
+import { mapFirebaseUserToAppUser } from '../utils/googleAuthFlow';
 
 const INITIAL_DEMO_ACCOUNTS: AuthAccount[] = [];
 
@@ -180,14 +182,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, [refreshBiometry, settings.biometricModality]);
 
-  // Sync state to localStorage
+  // Sync state to localStorage & Firebase Auth sign-out
   const setUser = useCallback((u: User | null) => {
     setUserState(u);
     if (u) {
       localStorage.setItem('nexa_user', JSON.stringify(u));
     } else {
       localStorage.removeItem('nexa_user');
+      signOutFirebase().catch(() => {});
     }
+  }, []);
+
+  // Keep signed-in Firebase Google user synchronized across reloads
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (!firebaseUser) return;
+      setUserState((prev) => {
+        const mapped = mapFirebaseUserToAppUser(firebaseUser, prev);
+        localStorage.setItem('nexa_user', JSON.stringify(mapped));
+        return mapped;
+      });
+    });
+    return () => unsubscribe();
   }, []);
 
   const updateUser = useCallback((patch: Partial<User>) => {
