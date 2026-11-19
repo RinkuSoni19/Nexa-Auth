@@ -34,7 +34,6 @@ const DEMO_USER: User = {
   isPhoneVerified: false,
   authMethod: 'google',
   joinedAt: Date.now(),
-  plan: 'trial-7d',
 };
 
 function isAutostartMode(): boolean {

@@ -11,7 +11,6 @@ import { AddAccountScreen }    from './screens/AddAccountScreen';
 import { AccountDetailScreen } from './screens/AccountDetailScreen';
 import { SettingsScreen }      from './screens/SettingsScreen';
 import { ProfileScreen }       from './screens/ProfileScreen';
-import { SubscriptionScreen }  from './screens/SubscriptionScreen';
 import { LockScreen }          from './screens/LockScreen';
 
 /* Shared components */
@@ -35,7 +34,6 @@ function AppInner() {
       case 'account-detail':  return <AccountDetailScreen />;
       case 'settings':        return <SettingsScreen />;
       case 'profile':         return <ProfileScreen />;
-      case 'plans':           return <SubscriptionScreen />;
       default:                return <AuthScreen />;
     }
   };
