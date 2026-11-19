@@ -14,7 +14,7 @@ test('deriveDisplayName prefers displayName, falls back to email prefix, then Go
   assert.equal(deriveDisplayName(null, null), 'Google User');
 });
 
-test('mapFirebaseUserToAppUser maps Google sign-in directly without OTP and preserves existing plan for same email', () => {
+test('mapFirebaseUserToAppUser maps Google sign-in directly without OTP and preserves joinedAt for same email', () => {
   const fixedNow = 1700000000000;
   const freshUser = mapFirebaseUserToAppUser(
     {
@@ -33,7 +33,6 @@ test('mapFirebaseUserToAppUser maps Google sign-in directly without OTP and pres
   assert.equal(freshUser.avatar, 'https://lh3.googleusercontent.com/photo.jpg');
   assert.equal(freshUser.isEmailVerified, true);
   assert.equal(freshUser.authMethod, 'google');
-  assert.equal(freshUser.plan, 'trial-7d');
   assert.equal(freshUser.joinedAt, fixedNow);
 
   const returningUser = mapFirebaseUserToAppUser(
@@ -44,16 +43,15 @@ test('mapFirebaseUserToAppUser maps Google sign-in directly without OTP and pres
       photoURL: 'https://lh3.googleusercontent.com/photo2.jpg',
       emailVerified: true,
     },
-    { ...freshUser, plan: '1-year', joinedAt: 1600000000000 },
+    { ...freshUser, joinedAt: 1600000000000 },
     fixedNow + 5000
   );
 
-  assert.equal(returningUser.plan, '1-year');
   assert.equal(returningUser.joinedAt, 1600000000000);
   assert.equal(returningUser.avatar, 'https://lh3.googleusercontent.com/photo2.jpg');
 });
 
-test('buildUserProfilePayload enforces schema bounds and defaults invalid plan safely', () => {
+test('buildUserProfilePayload enforces schema bounds without subscription plan fields', () => {
   const longName = 'A'.repeat(250);
   const payload = buildUserProfilePayload(
     {
@@ -62,7 +60,6 @@ test('buildUserProfilePayload enforces schema bounds and defaults invalid plan s
       avatar: 'https://example.com/a.png',
       authMethod: 'google',
       joinedAt: 1700000000000,
-      plan: 'invalid-plan' as never,
     },
     'uid_abc123'
   );
@@ -70,8 +67,8 @@ test('buildUserProfilePayload enforces schema bounds and defaults invalid plan s
   assert.equal(payload.uid, 'uid_abc123');
   assert.equal(payload.name.length, USER_PROFILE_LIMITS.NAME_MAX);
   assert.equal(payload.email, 'user@gmail.com');
-  assert.equal(payload.plan, 'trial-7d');
   assert.equal(payload.authMethod, 'google');
+  assert.equal('plan' in payload, false);
 });
 
 test('mapGoogleAuthError returns user-friendly messages for known Firebase Auth error codes', () => {

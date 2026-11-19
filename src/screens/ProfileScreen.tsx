@@ -2,8 +2,8 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Shield, Star, Settings, LogOut, ChevronRight, Award, Clock,
-  Camera, Mail, CheckCircle2, ShieldCheck, ShieldAlert, Edit2, Check,
-  X, Plus, RefreshCw, Loader2, Sparkles, User as UserIcon, Crown
+  Camera, Mail, CheckCircle2, ShieldCheck, Edit2, Check,
+  X
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import confetti from 'canvas-confetti';
@@ -22,19 +22,11 @@ export const ProfileScreen: React.FC = () => {
 
   // Name editing
   const [isEditingName, setIsEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState(user?.name || 'Rinku Soni');
+  const [nameInput, setNameInput] = useState(user?.name || 'NexaAuth User');
 
   // Avatar picker modal
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Email verification modal / flow
-  const [showEmailModal, setShowEmailModal] = useState(false);
-  const [emailInput, setEmailInput] = useState('');
-  const [emailOtp, setEmailOtp] = useState(['', '', '', '', '', '']);
-  const [emailStep, setEmailStep] = useState<'input' | 'otp'>('input');
-  const [emailLoading, setEmailLoading] = useState(false);
-  const emailOtpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const favorites = accounts.filter(a => a.isFavorite).length;
   const workAcc = accounts.filter(a => a.category === 'work').length;
@@ -97,43 +89,6 @@ export const ProfileScreen: React.FC = () => {
     showToast('Profile photo removed');
   };
 
-  // Email Verification Flow
-  const handleSendEmailOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!emailInput.includes('@') || !emailInput.includes('.')) {
-      showToast('Please enter a valid email address');
-      return;
-    }
-    setEmailLoading(true);
-    setTimeout(() => {
-      setEmailLoading(false);
-      setEmailStep('otp');
-      showToast(`Verification code sent to ${emailInput}`);
-    }, 1000);
-  };
-
-  const handleEmailOtpChange = (index: number, val: string) => {
-    if (!/^\d*$/.test(val)) return;
-    const next = [...emailOtp];
-    next[index] = val.slice(-1);
-    setEmailOtp(next);
-    if (val && index < 5) emailOtpRefs.current[index + 1]?.focus();
-    if (next.every(d => d !== '')) confirmEmailVerification(next.join(''));
-  };
-
-  const confirmEmailVerification = (_code?: string) => {
-    setEmailLoading(true);
-    setTimeout(() => {
-      setEmailLoading(false);
-      updateUser({ email: emailInput, isEmailVerified: true });
-      setShowEmailModal(false);
-      setEmailStep('input');
-      setEmailOtp(['', '', '', '', '', '']);
-      showToast('Email verified successfully!');
-      confetti({ particleCount: 70, spread: 80, origin: { y: 0.6 } });
-    }, 1200);
-  };
-
   // Render Avatar
   const renderAvatarContent = () => {
     if (user?.avatar) {
@@ -177,15 +132,19 @@ export const ProfileScreen: React.FC = () => {
       {/* ── HEADER ────────────────────────────────────────── */}
       <div className="relative z-10 flex items-center justify-between px-4 pt-9 pb-3.5 border-b border-emerald-500/10 bg-[#030705]/95 backdrop-blur-xl">
         <button
+          type="button"
           onClick={() => setScreen('dashboard')}
-          className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 cursor-pointer hover:border-emerald-500/40 transition"
+          aria-label="Back to Vault"
+          className="w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 cursor-pointer hover:border-emerald-500/40 transition flex items-center justify-center"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <h2 className="font-bold text-white text-base">My Profile & Security</h2>
         <button
+          type="button"
           onClick={() => setScreen('settings')}
-          className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 cursor-pointer hover:border-emerald-500/40 transition"
+          aria-label="Open Security Settings"
+          className="w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 cursor-pointer hover:border-emerald-500/40 transition flex items-center justify-center"
         >
           <Settings className="w-4 h-4" />
         </button>
@@ -219,7 +178,9 @@ export const ProfileScreen: React.FC = () => {
 
             {/* Camera / Edit Button Badge */}
             <button
+              type="button"
               onClick={() => setShowAvatarModal(true)}
+              aria-label="Change Profile Picture"
               className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-black shadow-lg cursor-pointer hover:scale-110 active:scale-95 transition-all border border-emerald-300"
               title="Add / Change Profile Picture"
             >
@@ -232,6 +193,7 @@ export const ProfileScreen: React.FC = () => {
             <div className="flex items-center gap-2 mt-2 w-full max-w-xs">
               <input
                 type="text"
+                aria-label="Full name"
                 value={nameInput}
                 onChange={e => setNameInput(e.target.value)}
                 placeholder="Enter full name"
@@ -239,13 +201,17 @@ export const ProfileScreen: React.FC = () => {
                 autoFocus
               />
               <button
+                type="button"
                 onClick={handleSaveName}
+                aria-label="Save name"
                 className="p-2 rounded-xl bg-emerald-500 text-black cursor-pointer font-bold text-xs"
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
               <button
+                type="button"
                 onClick={() => { setIsEditingName(false); setNameInput(user?.name || ''); }}
+                aria-label="Cancel name edit"
                 className="p-2 rounded-xl bg-zinc-800 text-zinc-400 cursor-pointer text-xs"
               >
                 <X className="w-3.5 h-3.5" />
@@ -253,10 +219,12 @@ export const ProfileScreen: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center gap-2 mt-1">
-              <h2 className="text-xl font-black text-white">{user?.name || 'Rinku Soni'}</h2>
+              <h2 className="text-xl font-black text-white">{user?.name || 'NexaAuth User'}</h2>
               <button
+                type="button"
                 onClick={() => { setIsEditingName(true); setNameInput(user?.name || ''); }}
-                className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400 transition cursor-pointer"
+                aria-label="Edit Name"
+                className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400 transition cursor-pointer"
                 title="Edit Name"
               >
                 <Edit2 className="w-3.5 h-3.5" />
@@ -328,7 +296,7 @@ export const ProfileScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Status Badge or Verify Button */}
+              {/* Status Badge or Google Sign-In Redirect */}
               {isEmailVerified ? (
                 <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono font-bold flex-shrink-0">
                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
@@ -336,15 +304,11 @@ export const ProfileScreen: React.FC = () => {
                 </div>
               ) : (
                 <button
-                  onClick={() => {
-                    setEmailInput(user?.email || '');
-                    setEmailStep('input');
-                    setShowEmailModal(true);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-black font-bold text-xs shadow-md hover:scale-105 active:scale-95 transition cursor-pointer flex-shrink-0"
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-black font-bold text-xs shadow-md hover:brightness-110 active:scale-95 transition cursor-pointer flex-shrink-0"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{user?.email ? 'Verify Email' : 'Add & Verify'}</span>
+                  <span>Sign in with Google</span>
                 </button>
               )}
             </div>
@@ -373,31 +337,8 @@ export const ProfileScreen: React.FC = () => {
 
         {/* ── 5. QUICK ACTIONS ─────────────────────────────── */}
         <div className="space-y-2">
-          {/* Subscription Plan Row */}
           <button
-            onClick={() => setScreen('plans')}
-            className="w-full flex items-center gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-yellow-500/10 via-[#0a1510] to-[#0a1510] border border-yellow-500/30 hover:border-yellow-400/60 transition cursor-pointer text-left"
-          >
-            <div className="p-2 rounded-xl bg-yellow-500/15 text-yellow-400">
-              <Crown className="w-4 h-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-bold text-white">Subscription Plan</span>
-                <span className="text-[10px] font-mono font-bold text-yellow-300 bg-yellow-950/80 px-2 py-0.5 rounded-full border border-yellow-500/40">
-                  {user?.plan === '1-year'
-                    ? '1 YEAR PRO (₹99)'
-                    : user?.plan === '3-months'
-                    ? '3 MONTHS (₹49)'
-                    : '7-DAY FREE TRIAL'}
-                </span>
-              </div>
-              <span className="text-[11px] text-zinc-400">Upgrade defense & unlimited cloud sync</span>
-            </div>
-            <ChevronRight className="w-4 h-4 text-zinc-500" />
-          </button>
-
-          <button
+            type="button"
             onClick={() => setShowAvatarModal(true)}
             className="w-full flex items-center gap-3 p-3.5 rounded-2xl bg-[#0a1510]/90 border border-zinc-800 hover:border-emerald-500/30 transition cursor-pointer text-left"
           >
@@ -412,6 +353,7 @@ export const ProfileScreen: React.FC = () => {
           </button>
 
           <button
+            type="button"
             onClick={() => setScreen('settings')}
             className="w-full flex items-center gap-3 p-3.5 rounded-2xl bg-[#0a1510]/90 border border-zinc-800 hover:border-emerald-500/30 transition cursor-pointer text-left"
           >
@@ -436,13 +378,14 @@ export const ProfileScreen: React.FC = () => {
               </span>
             </div>
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/20">
-              PRO
+              FREE
             </span>
           </div>
         </div>
 
         {/* ── 6. SIGN OUT BUTTON ───────────────────────────── */}
         <button
+          type="button"
           onClick={handleLogout}
           className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer text-red-400 border border-red-500/25 bg-red-950/20 hover:bg-red-500/10 transition mt-4"
         >
@@ -469,8 +412,10 @@ export const ProfileScreen: React.FC = () => {
                   <h3 className="font-bold text-white text-base">Profile Picture</h3>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowAvatarModal(false)}
-                  className="p-1 rounded-lg text-zinc-400 hover:text-white cursor-pointer"
+                  aria-label="Close profile picture dialog"
+                  className="p-1.5 rounded-lg text-zinc-400 hover:text-white cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -485,6 +430,7 @@ export const ProfileScreen: React.FC = () => {
                 onChange={handleFileUpload}
               />
               <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="w-full py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-black shadow-lg cursor-pointer hover:brightness-110 active:scale-98 transition mb-4"
               >
@@ -500,6 +446,7 @@ export const ProfileScreen: React.FC = () => {
                 {AVATAR_PRESETS.map(p => (
                   <button
                     key={p.id}
+                    type="button"
                     onClick={() => handleSelectPreset(p)}
                     className="p-2.5 rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-emerald-500/50 flex flex-col items-center gap-1.5 transition cursor-pointer group"
                   >
@@ -522,128 +469,12 @@ export const ProfileScreen: React.FC = () => {
               {/* Remove Avatar if active */}
               {user?.avatar && (
                 <button
+                  type="button"
                   onClick={handleRemoveAvatar}
                   className="w-full py-2.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 font-bold text-xs cursor-pointer transition text-center"
                 >
                   Remove Current Photo
                 </button>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ══════════════════════════════════════════════════════════ */}
-      {/* ── MODAL 2: ENTER EMAIL & VERIFY ──────────────────────── */}
-      {/* ══════════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {showEmailModal && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 50 }}
-              className="w-full max-w-sm rounded-3xl bg-[#08130e] border border-emerald-500/30 p-5 shadow-2xl relative"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <h3 className="font-bold text-white text-base">
-                    {emailStep === 'input' ? 'Link & Verify Email' : 'Confirm Email OTP'}
-                  </h3>
-                </div>
-                <button
-                  onClick={() => setShowEmailModal(false)}
-                  className="p-1 rounded-lg text-zinc-400 hover:text-white cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {emailStep === 'input' ? (
-                <form onSubmit={handleSendEmailOtp} className="space-y-4">
-                  <p className="text-xs text-zinc-400 leading-relaxed">
-                    Enter your email to receive a 6-digit confirmation code and activate AES-256 cloud recovery.
-                  </p>
-                  <div>
-                    <label className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider block mb-1.5">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={emailInput}
-                      onChange={e => setEmailInput(e.target.value)}
-                      placeholder="e.g. alex.kumar@gmail.com"
-                      className="w-full bg-[#0d1f16] border border-emerald-500/30 focus:border-emerald-400 rounded-2xl px-4 py-3 text-sm text-white placeholder-zinc-600 outline-none transition font-mono"
-                      autoFocus
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={emailLoading}
-                    className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-black shadow-lg cursor-pointer hover:brightness-110 active:scale-98 transition disabled:opacity-50"
-                  >
-                    {emailLoading ? (
-                      <><Loader2 className="w-4 h-4 animate-spin text-black" /><span>Sending Verification Code…</span></>
-                    ) : (
-                      <><Sparkles className="w-4 h-4" /><span>Send 6-Digit Code</span></>
-                    )}
-                  </button>
-                </form>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-xs text-zinc-400">
-                    Enter the 6-digit code sent to <span className="text-emerald-400 font-mono font-bold">{emailInput}</span>
-                  </p>
-
-                  {/* 6 OTP Boxes */}
-                  <div className="flex justify-center gap-1.5 sm:gap-2 my-2">
-                    {emailOtp.map((digit, i) => (
-                      <input
-                        key={i}
-                        ref={el => { emailOtpRefs.current[i] = el; }}
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={digit}
-                        onChange={e => handleEmailOtpChange(i, e.target.value)}
-                        className={`w-9 h-12 text-center text-lg font-black font-mono rounded-xl border outline-none transition ${
-                          digit
-                            ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
-                            : 'bg-[#0d1f16] border-zinc-700 text-white focus:border-emerald-500'
-                        }`}
-                        autoFocus={i === 0}
-                      />
-                    ))}
-                  </div>
-
-                  <p className="text-[10px] text-zinc-500 font-mono text-center">
-                    Demo Mode: enter any 6 digits to verify instantly
-                  </p>
-
-                  <button
-                    onClick={() => confirmEmailVerification(emailOtp.join(''))}
-                    disabled={emailOtp.some(d => !d) || emailLoading}
-                    className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-black shadow-lg cursor-pointer hover:brightness-110 active:scale-98 transition disabled:opacity-40"
-                  >
-                    {emailLoading ? (
-                      <><Loader2 className="w-4 h-4 animate-spin text-black" /><span>Verifying Token…</span></>
-                    ) : (
-                      <><CheckCircle2 className="w-4 h-4" /><span>Confirm & Mark Verified</span></>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setEmailStep('input')}
-                    className="w-full text-center text-xs text-zinc-400 hover:text-white cursor-pointer py-1 font-mono"
-                  >
-                    ← Change Email Address
-                  </button>
-                </div>
               )}
             </motion.div>
           </div>

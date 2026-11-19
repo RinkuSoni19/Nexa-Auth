@@ -14,6 +14,7 @@ import {
   getDocFromServer,
   setDoc,
   updateDoc,
+  deleteField,
   serverTimestamp,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -113,9 +114,11 @@ export async function syncGoogleUserProfile(
   const payload = buildUserProfilePayload(appUser, firebaseUser.uid);
 
   let exists = false;
+  let hasLegacyPlan = false;
   try {
     const snap = await getDoc(userRef);
     exists = snap.exists();
+    hasLegacyPlan = exists && snap.data()?.plan !== undefined;
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
   }
@@ -136,7 +139,7 @@ export async function syncGoogleUserProfile(
         name: payload.name,
         email: payload.email,
         avatar: payload.avatar,
-        plan: payload.plan,
+        ...(hasLegacyPlan ? { plan: deleteField() } : {}),
         updatedAt: serverTimestamp(),
       });
     } catch (error) {

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Fingerprint, ScanFace, KeyRound, CheckCircle2, Eye, EyeOff,
-  AlertCircle, ShieldCheck, ArrowLeft, X, Loader2
+  AlertCircle, ShieldCheck, ArrowLeft, Loader2
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import {
@@ -12,8 +11,11 @@ import {
   formatBiometrySummary,
 } from '../services/biometricAuth';
 import { getModalityDisplayInfo, validateMasterPassword, type BiometricModality } from '../utils/masterAuth';
-
-type ActiveBiometricPrompt = 'faceId' | 'fingerprint' | null;
+import {
+  calculateLockoutRemainingMs,
+  LOCKOUT_DURATION_MS,
+  LOCKOUT_THRESHOLD,
+} from '../utils/vaultSecurity';
 
 export const LockScreen: React.FC = () => {
   const {
@@ -42,12 +44,12 @@ export const LockScreen: React.FC = () => {
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const [verifyingPassword, setVerifyingPassword] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
 
   // Biometric prompt state
   const [isVerified, setIsVerified] = useState(false);
   const [biometricScanning, setBiometricScanning] = useState(false);
-  const [webPromptType, setWebPromptType] = useState<ActiveBiometricPrompt>(null);
-  const [webPromptError, setWebPromptError] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   const modalityInfo = getModalityDisplayInfo(
@@ -64,10 +66,28 @@ export const LockScreen: React.FC = () => {
     refreshBiometry(settings.biometricModality);
   }, [refreshBiometry, settings.biometricModality]);
 
+  useEffect(() => {
+    if (!lockedUntil) {
+      setLockoutSeconds(0);
+      return;
+    }
+    const tick = () => {
+      const remaining = calculateLockoutRemainingMs(failedAttempts, lockedUntil, Date.now());
+      setLockoutSeconds(Math.ceil(remaining / 1000));
+      if (remaining <= 0) {
+        setLockedUntil(null);
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 500);
+    return () => window.clearInterval(id);
+  }, [failedAttempts, lockedUntil]);
+
   const completeUnlock = (label: string) => {
     setIsVerified(true);
-    setWebPromptType(null);
     setBiometricScanning(false);
+    setFailedAttempts(0);
+    setLockedUntil(null);
     setTimeout(() => {
       unlock();
       showToast(label);
@@ -97,6 +117,12 @@ export const LockScreen: React.FC = () => {
     e.preventDefault();
     setUnlockError(null);
 
+    const remainingMs = calculateLockoutRemainingMs(failedAttempts, lockedUntil, Date.now());
+    if (remainingMs > 0) {
+      setUnlockError(`Too many failed attempts. Wait ${Math.ceil(remainingMs / 1000)}s before retrying.`);
+      return;
+    }
+
     if (!passwordInput) {
       setUnlockError('Enter your master password to unlock');
       return;
@@ -107,8 +133,14 @@ export const LockScreen: React.FC = () => {
     setVerifyingPassword(false);
 
     if (!ok) {
-      setFailedAttempts((n) => n + 1);
-      setUnlockError('Incorrect master password');
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+      if (nextAttempts >= LOCKOUT_THRESHOLD) {
+        setLockedUntil(Date.now() + LOCKOUT_DURATION_MS);
+        setUnlockError('Too many failed attempts. Vault unlock paused for 30 seconds.');
+      } else {
+        setUnlockError('Incorrect master password');
+      }
       return;
     }
 
@@ -117,7 +149,14 @@ export const LockScreen: React.FC = () => {
 
   const triggerBiometricAuth = async (requestedMethod: 'faceId' | 'fingerprint') => {
     setUnlockError(null);
-    setWebPromptError(null);
+
+    if (!isNativeBiometricPlatform()) {
+      setUnlockError(
+        'Native Face ID / Fingerprint requires an Android or iOS device. Enter your Master Password to unlock on web.'
+      );
+      passwordRef.current?.focus();
+      return;
+    }
 
     const capability = await checkBiometricCapability(
       requestedMethod === 'faceId' ? 'faceId' : 'fingerprint'
@@ -128,50 +167,25 @@ export const LockScreen: React.FC = () => {
       return;
     }
 
-    if (isNativeBiometricPlatform()) {
-      setBiometricScanning(true);
-      const res = await authenticateWithNativeBiometrics(
-        requestedMethod === 'faceId'
-          ? 'Verify Face ID to unlock NexaAuth Vault'
-          : 'Verify Fingerprint to unlock NexaAuth Vault'
-      );
-      setBiometricScanning(false);
-
-      if (res.success) {
-        completeUnlock(
-          requestedMethod === 'faceId'
-            ? 'Vault Unlocked via Face ID'
-            : 'Vault Unlocked via Fingerprint'
-        );
-      } else if (!res.cancelled) {
-        setUnlockError(res.error || 'Biometric verification failed. Use Master Password.');
-      } else {
-        passwordRef.current?.focus();
-      }
-      return;
-    }
-
-    // Web preview path: show interactive Capacitor Biometric Prompt sheet
-    setWebPromptType(requestedMethod);
-  };
-
-  const handleWebPromptVerify = () => {
     setBiometricScanning(true);
-    setWebPromptError(null);
-    const label = webPromptType === 'faceId' ? 'Face ID' : 'Fingerprint';
-    setTimeout(() => {
-      completeUnlock(`Vault Unlocked via ${label}`);
-    }, 350);
-  };
+    const res = await authenticateWithNativeBiometrics(
+      requestedMethod === 'faceId'
+        ? 'Verify Face ID to unlock NexaAuth Vault'
+        : 'Verify Fingerprint to unlock NexaAuth Vault'
+    );
+    setBiometricScanning(false);
 
-  const handleWebPromptFail = () => {
-    setWebPromptError('Biometric not recognized. Try again or unlock with Master Password.');
-  };
-
-  const handleWebPromptCancel = () => {
-    setWebPromptType(null);
-    setWebPromptError(null);
-    passwordRef.current?.focus();
+    if (res.success) {
+      completeUnlock(
+        requestedMethod === 'faceId'
+          ? 'Vault Unlocked via Face ID'
+          : 'Vault Unlocked via Fingerprint'
+      );
+    } else if (!res.cancelled) {
+      setUnlockError(res.error || 'Biometric verification failed. Use Master Password.');
+    } else {
+      passwordRef.current?.focus();
+    }
   };
 
   // ── MODE 1: MASTER PASSWORD SETUP REQUIRED FIRST ──────────────────────────────
@@ -484,102 +498,24 @@ export const LockScreen: React.FC = () => {
 
           <button
             type="submit"
-            disabled={verifyingPassword || isVerified}
+            disabled={verifyingPassword || isVerified || lockoutSeconds > 0}
             className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-black font-black text-sm flex items-center justify-center gap-2 cursor-pointer hover:brightness-110 transition disabled:opacity-50"
           >
             <ShieldCheck className="w-4 h-4" />
-            <span>{verifyingPassword ? 'Verifying…' : 'Unlock Vault'}</span>
+            <span>
+              {lockoutSeconds > 0
+                ? `Locked (${lockoutSeconds}s)`
+                : verifyingPassword
+                ? 'Verifying…'
+                : 'Unlock Vault'}
+            </span>
           </button>
         </form>
       </div>
 
       <p className="relative z-10 text-center text-[10px] text-zinc-500 font-mono">
-        Protected by Master Password & Capacitor Biometric Auth
+        PBKDF2-SHA256 Master Password • Native Biometric Guard
       </p>
-
-      {/* ── INTERACTIVE WEB BIOMETRIC PROMPT SHEET (NON-NATIVE PREVIEW) ──── */}
-      <AnimatePresence>
-        {webPromptType && (
-          <div
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="biometric-prompt-title"
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 40, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 40, scale: 0.96 }}
-              className="w-full max-w-xs rounded-3xl bg-[#0b1812] border border-emerald-500/35 p-5 shadow-2xl text-center space-y-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/25">
-                  Capacitor Biometric Prompt
-                </span>
-                <button
-                  type="button"
-                  onClick={handleWebPromptCancel}
-                  aria-label="Cancel biometric verification"
-                  className="p-1 rounded-lg text-zinc-400 hover:text-white cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex flex-col items-center py-2">
-                <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-400/50 flex items-center justify-center text-emerald-400 mb-3 shadow-[0_0_24px_rgba(0,255,136,0.22)]">
-                  {webPromptType === 'faceId' ? (
-                    <ScanFace className="w-9 h-9 animate-pulse" />
-                  ) : (
-                    <Fingerprint className="w-9 h-9 animate-pulse" />
-                  )}
-                </div>
-                <h3 id="biometric-prompt-title" className="text-base font-black text-white">
-                  {webPromptType === 'faceId' ? 'Face ID Verification' : 'Fingerprint Verification'}
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Verify your {webPromptType === 'faceId' ? 'Face ID' : 'Fingerprint'} to decrypt NexaAuth Vault
-                </p>
-              </div>
-
-              {webPromptError && (
-                <div role="alert" className="p-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs">
-                  {webPromptError}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={handleWebPromptVerify}
-                  disabled={biometricScanning}
-                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-black font-black text-xs cursor-pointer hover:brightness-110 transition"
-                >
-                  {biometricScanning
-                    ? 'Verifying…'
-                    : `Confirm ${webPromptType === 'faceId' ? 'Face ID' : 'Fingerprint'} Match`}
-                </button>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={handleWebPromptFail}
-                    className="py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-300 text-[11px] font-mono cursor-pointer hover:border-red-500/40"
-                  >
-                    Simulate Mismatch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleWebPromptCancel}
-                    className="py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-300 text-[11px] font-mono cursor-pointer hover:border-zinc-500"
-                  >
-                    Use Password
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

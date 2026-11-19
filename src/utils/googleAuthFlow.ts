@@ -14,7 +14,6 @@ export interface UserProfileFirestoreDoc {
   email: string;
   avatar: string;
   authMethod: 'google';
-  plan: 'free' | 'trial-7d' | '3-months' | '1-year' | 'pro' | 'enterprise';
 }
 
 export const USER_PROFILE_LIMITS = {
@@ -23,15 +22,6 @@ export const USER_PROFILE_LIMITS = {
   EMAIL_MAX: 254,
   AVATAR_MAX: 2048,
 } as const;
-
-export const ALLOWED_PLANS = [
-  'free',
-  'trial-7d',
-  '3-months',
-  '1-year',
-  'pro',
-  'enterprise',
-] as const;
 
 /**
  * Derive a clean display name from a Google/Firebase user record.
@@ -86,7 +76,6 @@ export function mapFirebaseUserToAppUser(
     avatar: avatar || undefined,
     authMethod: 'google',
     joinedAt: isSameAccount && existingUser?.joinedAt ? existingUser.joinedAt : now,
-    plan: isSameAccount && existingUser?.plan ? existingUser.plan : 'trial-7d',
   };
 }
 
@@ -107,9 +96,6 @@ export function buildUserProfilePayload(
   const safeAvatar = (user.avatar ?? '')
     .trim()
     .slice(0, USER_PROFILE_LIMITS.AVATAR_MAX);
-  const safePlan = ALLOWED_PLANS.includes(user.plan as (typeof ALLOWED_PLANS)[number])
-    ? (user.plan as UserProfileFirestoreDoc['plan'])
-    : 'trial-7d';
 
   return {
     uid: safeUid,
@@ -117,7 +103,6 @@ export function buildUserProfilePayload(
     email: safeEmail,
     avatar: safeAvatar,
     authMethod: 'google',
-    plan: safePlan,
   };
 }
 

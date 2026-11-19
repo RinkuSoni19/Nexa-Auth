@@ -34,8 +34,7 @@ const TokenCard: React.FC<{
       layout
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative overflow-hidden rounded-2xl bg-[#0a1510]/90 border border-emerald-500/15 hover:border-emerald-500/35 transition-all group cursor-pointer"
-      onClick={() => onDetail(account)}
+      className="relative overflow-hidden rounded-2xl bg-[#0a1510]/90 border border-emerald-500/15 hover:border-emerald-500/35 transition-all group"
     >
       {/* Left accent */}
       <div className={`absolute top-0 left-0 bottom-0 w-1 ${isUrgent ? 'bg-red-500' : 'bg-gradient-to-b from-emerald-500 to-teal-700'} transition-colors duration-300`} />
@@ -49,39 +48,51 @@ const TokenCard: React.FC<{
         />
       </div>
 
-      <div className="flex items-center gap-3 p-3.5">
-        {/* Service icon */}
-        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${account.iconBg} flex items-center justify-center font-bold text-base text-white flex-shrink-0 shadow-md`}>
-          {account.iconInitial}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-bold text-white truncate">{account.issuer}</span>
-            {account.isFavorite && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400 flex-shrink-0" />}
-            <span className="ml-auto text-[9px] font-mono text-zinc-500 bg-zinc-800/80 px-1.5 py-0.5 rounded uppercase flex-shrink-0">
-              {account.category}
-            </span>
+      <div className="flex items-center gap-2.5 p-3">
+        {/* Account detail trigger */}
+        <button
+          type="button"
+          onClick={() => onDetail(account)}
+          aria-label={`Open ${account.issuer} (${account.accountName})`}
+          className="flex-1 min-w-0 flex items-center gap-3 text-left cursor-pointer rounded-xl p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+        >
+          {/* Service icon */}
+          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${account.iconBg} flex items-center justify-center font-bold text-base text-white flex-shrink-0 shadow-md`}>
+            {account.iconInitial}
           </div>
-          <span className="text-[11px] text-zinc-400 truncate block">{account.accountName}</span>
-        </div>
 
-        {/* Code + Copy */}
-        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => { e.stopPropagation(); onCopy(account.id, code); }}>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-bold text-white truncate">{account.issuer}</span>
+              {account.isFavorite && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400 flex-shrink-0" />}
+              <span className="ml-auto text-[9px] font-mono text-zinc-500 bg-zinc-800/80 px-1.5 py-0.5 rounded uppercase flex-shrink-0">
+                {account.category}
+              </span>
+            </div>
+            <span className="text-[11px] text-zinc-400 truncate block">{account.accountName}</span>
+          </div>
+        </button>
+
+        {/* Code + Copy button */}
+        <button
+          type="button"
+          onClick={() => onCopy(account.id, code)}
+          aria-label={`Copy ${account.issuer} code`}
+          className="flex items-center gap-2 flex-shrink-0 cursor-pointer rounded-xl p-1 hover:bg-zinc-800/40 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+        >
           <span className={`font-mono text-lg font-bold tracking-widest transition-all ${
             isUrgent ? 'text-red-400' : 'text-[#00ff88]'
           } ${hideTokens ? 'blur-sm select-none' : ''}`}>
             {hideTokens ? '••• •••' : formatCode(code)}
           </span>
-          <button
-            className={`p-2 rounded-xl border transition flex-shrink-0 ${
-              isCopied ? 'bg-emerald-500 text-black border-emerald-400 scale-110' : 'bg-zinc-800/80 text-zinc-300 border-zinc-700 hover:border-emerald-500/50'
+          <span
+            className={`p-2 rounded-xl border transition flex-shrink-0 flex items-center justify-center ${
+              isCopied ? 'bg-emerald-500 text-black border-emerald-400 scale-105' : 'bg-zinc-800/80 text-zinc-300 border-zinc-700 hover:border-emerald-500/50'
             }`}
-            title="Copy code"
           >
             {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
-        </div>
+          </span>
+        </button>
       </div>
     </motion.div>
   );
@@ -93,6 +104,10 @@ export const DashboardScreen: React.FC = () => {
   const [secsLeft, setSecsLeft] = useState(getSecondsRemaining());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [hideTokens, setHideTokens] = useState(settings.hideTokens);
+
+  useEffect(() => {
+    setHideTokens(settings.hideTokens);
+  }, [settings.hideTokens]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -138,7 +153,7 @@ export const DashboardScreen: React.FC = () => {
       <div className="relative z-10 flex items-center justify-between px-4 pt-9 pb-3.5 border-b border-emerald-500/10 bg-[#030705]/95 backdrop-blur-xl">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl overflow-hidden border border-emerald-500/40 p-0.5 bg-black">
-            <img src="/icon.jpg" alt="N" className="w-full h-full object-cover rounded-lg" />
+            <img src="/icon.jpg" alt="NexaAuth" className="w-full h-full object-cover rounded-lg" />
           </div>
           <div>
             <div className="flex items-center gap-1 leading-none">
@@ -152,22 +167,28 @@ export const DashboardScreen: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setHideTokens(h => !h)}
-            className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-zinc-300 hover:border-emerald-500/40 transition cursor-pointer"
+            aria-label={hideTokens ? 'Show tokens' : 'Hide tokens'}
+            className="w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-zinc-300 hover:border-emerald-500/40 transition cursor-pointer flex items-center justify-center"
             title={hideTokens ? 'Show tokens' : 'Hide tokens'}
           >
             {hideTokens ? <EyeOff className="w-4 h-4 text-red-400" /> : <Eye className="w-4 h-4 text-emerald-400" />}
           </button>
           <button
+            type="button"
             onClick={lock}
-            className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-zinc-300 hover:border-red-500/40 hover:text-red-400 transition cursor-pointer"
+            aria-label="Lock Vault"
+            className="w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700/60 text-zinc-300 hover:border-red-500/40 hover:text-red-400 transition cursor-pointer flex items-center justify-center"
             title="Lock Vault"
           >
             <Lock className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={() => setScreen('profile')}
-            className="w-8 h-8 rounded-xl overflow-hidden bg-gradient-to-br from-[#ff2e4d] to-[#00c853] flex items-center justify-center font-bold text-white text-sm shadow-md cursor-pointer border border-emerald-500/30"
+            aria-label="Open Profile"
+            className="w-9 h-9 rounded-xl overflow-hidden bg-gradient-to-br from-[#ff2e4d] to-[#00c853] flex items-center justify-center font-bold text-white text-sm shadow-md cursor-pointer border border-emerald-500/30"
           >
             {user?.avatar ? (
               user.avatar.startsWith('preset:') ? (
@@ -176,7 +197,7 @@ export const DashboardScreen: React.FC = () => {
                 <img src={user.avatar} alt="User" className="w-full h-full object-cover" />
               )
             ) : (
-              user?.name?.charAt(0) ?? 'A'
+              user?.name?.charAt(0) ?? 'U'
             )}
           </button>
         </div>
@@ -228,6 +249,8 @@ export const DashboardScreen: React.FC = () => {
         {CATEGORIES.map(c => (
           <button
             key={c.key}
+            type="button"
+            aria-pressed={activeCategory === c.key}
             onClick={() => setActiveCategory(c.key)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer transition-all border ${
               activeCategory === c.key
@@ -263,11 +286,16 @@ export const DashboardScreen: React.FC = () => {
           <TokenCard key={a.id} account={a} now={now} secsLeft={secsLeft} hideTokens={hideTokens} onCopy={handleCopy} onDetail={handleDetail} copiedId={copiedId} />
         ))}
         {filtered.length === 0 && (
-          <div className="text-center py-14 text-zinc-500">
-            <ShieldCheck className="w-10 h-10 mx-auto mb-3 text-zinc-700" />
-            <p className="text-sm">No accounts found</p>
-            <button onClick={() => setScreen('add-account')} className="mt-3 text-xs text-emerald-400 hover:underline cursor-pointer">
-              + Add your first account
+          <div className="text-center py-14 text-zinc-500 flex flex-col items-center">
+            <ShieldCheck className="w-10 h-10 mb-3 text-zinc-700" />
+            <p className="text-sm text-zinc-400">No accounts found</p>
+            <button
+              type="button"
+              onClick={() => setScreen('add-account')}
+              className="mt-4 px-5 py-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-500/25 transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add your first account</span>
             </button>
           </div>
         )}

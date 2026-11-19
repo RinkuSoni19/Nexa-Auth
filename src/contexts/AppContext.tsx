@@ -13,6 +13,7 @@ import {
 } from '../services/biometricAuth';
 import { auth, onAuthStateChanged, signOutFirebase } from '../firebase';
 import { mapFirebaseUserToAppUser } from '../utils/googleAuthFlow';
+import { validateBackupPayload } from '../utils/vaultSecurity';
 
 const INITIAL_DEMO_ACCOUNTS: AuthAccount[] = [];
 
@@ -27,8 +28,8 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const DEMO_USER: User = {
-  name: 'Rinku Soni',
-  email: 'rinkusoni28489@gmail.com',
+  name: 'NexaAuth Preview',
+  email: 'preview@nexaauth.local',
   isEmailVerified: true,
   isPhoneVerified: false,
   authMethod: 'google',
@@ -37,7 +38,7 @@ const DEMO_USER: User = {
 };
 
 function isAutostartMode(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('autostart') === '1';
 }
 
@@ -90,7 +91,14 @@ interface AppContextType {
   importBackup: (jsonStr: string) => boolean;
 }
 
-const AppContext = createContext<AppContextType | null>(null);
+const APP_CONTEXT_SYMBOL = Symbol.for('nexaauth.AppContext');
+type GlobalWithAppContext = typeof globalThis & {
+  [APP_CONTEXT_SYMBOL]?: React.Context<AppContextType | null>;
+};
+const globalContextStore = globalThis as GlobalWithAppContext;
+const AppContext: React.Context<AppContextType | null> =
+  globalContextStore[APP_CONTEXT_SYMBOL] ??
+  (globalContextStore[APP_CONTEXT_SYMBOL] = createContext<AppContextType | null>(null));
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Persistent user state
@@ -189,6 +197,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       localStorage.setItem('nexa_user', JSON.stringify(u));
     } else {
       localStorage.removeItem('nexa_user');
+      try { sessionStorage.removeItem('nexa_session_unlocked'); } catch {}
+      setSelectedAccount(null);
+      setIsLocked(false);
       signOutFirebase().catch(() => {});
     }
   }, []);
@@ -322,6 +333,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const toggleFavorite = useCallback((id: string) => {
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, isFavorite: !a.isFavorite } : a));
+    setSelectedAccount(prev => (prev && prev.id === id ? { ...prev, isFavorite: !prev.isFavorite } : prev));
   }, [setAccounts]);
 
   const unlock = useCallback(() => {
@@ -332,6 +344,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try { sessionStorage.removeItem('nexa_session_unlocked'); } catch {}
     setIsLocked(true);
   }, []);
+
+  // Enforce real inactivity auto-lock when Master Password and Auto-Lock are enabled
+  useEffect(() => {
+    if (!user || !hasMasterPassword || !settings.autoLock || isLocked) return;
+    const timeoutMs = Math.max(1, settings.autoLockTimeout || 5) * 60_000;
+    let timerId: number | undefined;
+
+    const resetTimer = () => {
+      if (timerId !== undefined) window.clearTimeout(timerId);
+      timerId = window.setTimeout(() => {
+        lock();
+      }, timeoutMs);
+    };
+
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach((evt) => window.addEventListener(evt, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      if (timerId !== undefined) window.clearTimeout(timerId);
+      events.forEach((evt) => window.removeEventListener(evt, resetTimer));
+    };
+  }, [user, hasMasterPassword, settings.autoLock, settings.autoLockTimeout, isLocked, lock]);
 
   const exportBackup = useCallback(() => {
     const data = JSON.stringify({
@@ -351,19 +386,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [accounts, settings, showToast]);
 
   const importBackup = useCallback((jsonStr: string) => {
-    try {
-      const parsed = JSON.parse(jsonStr);
-      if (Array.isArray(parsed.accounts)) {
-        setAccounts(parsed.accounts);
-        if (parsed.settings) updateSettings(parsed.settings);
-        showToast(`Imported ${parsed.accounts.length} accounts!`);
-        return true;
-      }
-      return false;
-    } catch {
-      showToast('Invalid backup file format');
+    const result = validateBackupPayload(jsonStr);
+    if (!result.valid) {
+      showToast(result.error || 'Invalid backup file format');
       return false;
     }
+    setAccounts(result.accounts);
+    if (result.settingsPatch && Object.keys(result.settingsPatch).length > 0) {
+      updateSettings(result.settingsPatch);
+    }
+    showToast(`Imported ${result.accounts.length} verified account${result.accounts.length === 1 ? '' : 's'}!`);
+    return true;
   }, [setAccounts, updateSettings, showToast]);
 
   return (

@@ -27,9 +27,9 @@ test('validateMasterPassword enforces minimum length and confirmation match', ()
   assert.equal(strongRes.strength, 'strong');
 });
 
-test('hashMasterPassword & verifyMasterPassword verify salted hashes accurately', async () => {
+test('hashMasterPassword & verifyMasterPassword verify PBKDF2-SHA256 and legacy hashes accurately', async () => {
   const stored = await hashMasterPassword('MyMasterPass#99');
-  assert.ok(stored.includes(':'));
+  assert.ok(stored.startsWith('pbkdf2_v1:100000:'));
 
   const ok = await verifyMasterPassword('MyMasterPass#99', stored);
   assert.equal(ok, true);
@@ -46,6 +46,11 @@ test('hashMasterPassword & verifyMasterPassword verify salted hashes accurately'
   const anotherStored = await hashMasterPassword('MyMasterPass#99');
   assert.notEqual(stored, anotherStored);
   assert.equal(await verifyMasterPassword('MyMasterPass#99', anotherStored), true);
+
+  // Backwards compatibility for legacy "salt:sha256" hashes
+  const legacyDigest = await sha256Hex('deadbeef:LegacyPass1!');
+  assert.equal(await verifyMasterPassword('LegacyPass1!', `deadbeef:${legacyDigest}`), true);
+  assert.equal(await verifyMasterPassword('WrongLegacy', `deadbeef:${legacyDigest}`), false);
 });
 
 test('sha256Hex produces standard NIST SHA-256 test vector', async () => {

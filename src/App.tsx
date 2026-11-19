@@ -80,10 +80,54 @@ function AppInner() {
   );
 }
 
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; message: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, message: error?.message || 'Unexpected application error' };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <PhoneContainer>
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-[#030705] text-white space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-red-500/15 border border-red-500/40 flex items-center justify-center text-red-400 text-2xl font-black">
+              !
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white">NexaAuth Recovery</h2>
+              <p className="text-xs text-zinc-400 font-mono max-w-xs break-words">
+                {this.state.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs cursor-pointer transition"
+            >
+              Reload Vault
+            </button>
+          </div>
+        </PhoneContainer>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <AppProvider>
-      <AppInner />
-    </AppProvider>
+    <AppErrorBoundary>
+      <AppProvider>
+        <AppInner />
+      </AppProvider>
+    </AppErrorBoundary>
   );
 }

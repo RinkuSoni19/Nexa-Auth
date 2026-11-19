@@ -166,20 +166,90 @@ export function generateSalt(byteLength = 16): string {
     .join('');
 }
 
+const PBKDF2_ITERATIONS = 100_000;
+const PBKDF2_PREFIX = 'pbkdf2_v1';
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.length % 2 === 0 ? hex : `0${hex}`;
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function derivePbkdf2Hex(
+  password: string,
+  saltHex: string,
+  iterations: number
+): Promise<string | null> {
+  if (typeof globalThis.crypto === 'undefined' || !globalThis.crypto.subtle) {
+    return null;
+  }
+  try {
+    const enc = new TextEncoder();
+    const keyMaterial = await globalThis.crypto.subtle.importKey(
+      'raw',
+      enc.encode(password),
+      { name: 'PBKDF2' },
+      false,
+      ['deriveBits']
+    );
+    const saltBytes = hexToBytes(saltHex);
+    const saltBuffer = saltBytes.buffer.slice(
+      saltBytes.byteOffset,
+      saltBytes.byteOffset + saltBytes.byteLength
+    ) as ArrayBuffer;
+    const derivedBits = await globalThis.crypto.subtle.deriveBits(
+      {
+        name: 'PBKDF2',
+        salt: saltBuffer,
+        iterations,
+        hash: 'SHA-256',
+      },
+      keyMaterial,
+      256
+    );
+    return bytesToHex(new Uint8Array(derivedBits));
+  } catch {
+    return null;
+  }
+}
+
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length || a.length === 0) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 /**
- * Derive a salted SHA-256 hash ("salt:digestHex") for master password storage.
+ * Derive a salted PBKDF2-HMAC-SHA256 hash ("pbkdf2_v1:iterations:saltHex:derivedHex")
+ * with automatic fallback when WebCrypto subtle is unavailable.
  */
 export async function hashMasterPassword(
   password: string,
   existingSalt?: string
 ): Promise<string> {
   const salt = existingSalt || generateSalt(16);
+  const pbkdf2Hex = await derivePbkdf2Hex(password, salt, PBKDF2_ITERATIONS);
+  if (pbkdf2Hex) {
+    return `${PBKDF2_PREFIX}:${PBKDF2_ITERATIONS}:${salt}:${pbkdf2Hex}`;
+  }
   const digest = await sha256Hex(`${salt}:${password}`);
   return `${salt}:${digest}`;
 }
 
 /**
- * Verify a candidate password against a stored "salt:digestHex" value.
+ * Verify a candidate password against either PBKDF2-v1 or legacy "salt:digestHex" format.
  */
 export async function verifyMasterPassword(
   password: string,
@@ -188,16 +258,28 @@ export async function verifyMasterPassword(
   if (!password || !storedHash || !storedHash.includes(':')) {
     return false;
   }
-  const [salt, expectedHex] = storedHash.split(':');
-  if (!salt || !expectedHex) return false;
-  const candidateHex = await sha256Hex(`${salt}:${password}`);
-  if (candidateHex.length !== expectedHex.length) return false;
 
-  let diff = 0;
-  for (let i = 0; i < candidateHex.length; i++) {
-    diff |= candidateHex.charCodeAt(i) ^ expectedHex.charCodeAt(i);
+  const parts = storedHash.split(':');
+  if (parts.length === 4 && parts[0] === PBKDF2_PREFIX) {
+    const iterations = Number(parts[1]);
+    const salt = parts[2];
+    const expectedHex = parts[3];
+    if (!Number.isInteger(iterations) || iterations < 10_000 || iterations > 500_000 || !salt || !expectedHex) {
+      return false;
+    }
+    const candidateHex = await derivePbkdf2Hex(password, salt, iterations);
+    if (!candidateHex) return false;
+    return timingSafeEqualHex(candidateHex, expectedHex);
   }
-  return diff === 0;
+
+  if (parts.length === 2) {
+    const [salt, expectedHex] = parts;
+    if (!salt || !expectedHex) return false;
+    const candidateHex = await sha256Hex(`${salt}:${password}`);
+    return timingSafeEqualHex(candidateHex, expectedHex);
+  }
+
+  return false;
 }
 
 /**

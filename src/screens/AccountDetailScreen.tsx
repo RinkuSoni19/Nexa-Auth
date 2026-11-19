@@ -21,7 +21,13 @@ export const AccountDetailScreen: React.FC = () => {
     return () => clearInterval(id);
   }, [acc?.period]);
 
-  if (!acc) { setScreen('dashboard'); return null; }
+  useEffect(() => {
+    if (!acc) {
+      setScreen('dashboard');
+    }
+  }, [acc, setScreen]);
+
+  if (!acc) return null;
 
   const code = generateTOTP(acc.secret, now, acc.period, acc.digits, acc.algorithm);
   const pct = (secsLeft / acc.period) * 100;
@@ -32,6 +38,13 @@ export const AccountDetailScreen: React.FC = () => {
     setCopied(true);
     showToast('Code copied!');
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRefresh = () => {
+    const t = Date.now();
+    setNow(t);
+    setSecsLeft(getSecondsRemaining(t, acc.period));
+    showToast('Token timer synced');
   };
 
   const handleDelete = () => {
@@ -48,12 +61,26 @@ export const AccountDetailScreen: React.FC = () => {
 
       {/* Header */}
       <div className="relative z-10 flex items-center justify-between px-4 pt-9 pb-3.5 border-b border-emerald-500/10 bg-[#030705]/95 backdrop-blur-xl">
-        <button onClick={() => setScreen('dashboard')} className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 cursor-pointer hover:border-emerald-500/40 transition">
+        <button
+          type="button"
+          onClick={() => setScreen('dashboard')}
+          aria-label="Back to Vault"
+          className="w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 cursor-pointer hover:border-emerald-500/40 transition flex items-center justify-center"
+        >
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <span className="font-bold text-white">{acc.issuer}</span>
-        <button onClick={() => { toggleFavorite(acc.id); showToast(acc.isFavorite ? 'Removed from favorites' : 'Added to favorites'); }}
-          className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 cursor-pointer hover:border-yellow-500/40 transition">
+        <span className="font-bold text-white truncate px-2">{acc.issuer}</span>
+        <button
+          type="button"
+          onClick={() => {
+            const wasFav = acc.isFavorite;
+            toggleFavorite(acc.id);
+            showToast(wasFav ? 'Removed from favorites' : 'Added to favorites');
+          }}
+          aria-label={acc.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          aria-pressed={acc.isFavorite}
+          className="w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700 cursor-pointer hover:border-yellow-500/40 transition flex items-center justify-center"
+        >
           <Star className={`w-4 h-4 ${acc.isFavorite ? 'text-yellow-400 fill-yellow-400' : 'text-zinc-400'}`} />
         </button>
       </div>
@@ -104,19 +131,19 @@ export const AccountDetailScreen: React.FC = () => {
 
           {/* Action buttons */}
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={handleCopy}
+            <button type="button" onClick={handleCopy}
               className={`flex flex-col items-center gap-1 py-2.5 rounded-2xl border text-xs font-semibold cursor-pointer transition ${
                 copied ? 'bg-emerald-500 text-black border-emerald-400' : 'bg-zinc-900/80 text-zinc-300 border-zinc-700 hover:border-emerald-500/40'
               }`}>
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               {copied ? 'Copied!' : 'Copy'}
             </button>
-            <button onClick={() => setHidden(h => !h)}
+            <button type="button" onClick={() => setHidden(h => !h)}
               className="flex flex-col items-center gap-1 py-2.5 rounded-2xl border border-zinc-700 text-zinc-300 bg-zinc-900/80 hover:border-zinc-500 text-xs font-semibold cursor-pointer transition">
               {hidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               {hidden ? 'Show' : 'Hide'}
             </button>
-            <button onClick={() => setNow(Date.now())}
+            <button type="button" onClick={handleRefresh}
               className="flex flex-col items-center gap-1 py-2.5 rounded-2xl border border-zinc-700 text-zinc-300 bg-zinc-900/80 hover:border-zinc-500 text-xs font-semibold cursor-pointer transition">
               <RefreshCw className="w-4 h-4" />
               Refresh
@@ -142,16 +169,35 @@ export const AccountDetailScreen: React.FC = () => {
           ))}
         </div>
 
-        {/* Delete */}
-        <button onClick={handleDelete}
-          className={`w-full py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer transition border ${
-            confirmDelete
-              ? 'bg-red-500 text-white border-red-400 shadow-lg shadow-red-900/40'
-              : 'bg-transparent text-red-400 border-red-500/30 hover:bg-red-500/10'
-          }`}>
-          <Trash2 className="w-4 h-4" />
-          {confirmDelete ? 'Confirm Delete — Tap Again' : 'Remove from Vault'}
-        </button>
+        {/* Delete with safe Cancel */}
+        {confirmDelete ? (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="py-3 rounded-2xl font-semibold text-sm bg-zinc-900 border border-zinc-700 text-zinc-300 hover:border-zinc-500 cursor-pointer transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-1.5 cursor-pointer transition border bg-red-500 text-white border-red-400 shadow-lg shadow-red-900/40"
+            >
+              <Trash2 className="w-4 h-4" />
+              Confirm Delete
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="w-full py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 cursor-pointer transition border bg-transparent text-red-400 border-red-500/30 hover:bg-red-500/10"
+          >
+            <Trash2 className="w-4 h-4" />
+            Remove from Vault
+          </button>
+        )}
       </div>
     </div>
   );

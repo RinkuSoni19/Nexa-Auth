@@ -9,8 +9,7 @@ export type Screen =
   | 'add-account'
   | 'account-detail'
   | 'settings'
-  | 'profile'
-  | 'plans';
+  | 'profile';
 
 export type Category = 'all' | 'work' | 'crypto' | 'personal' | 'social';
 
@@ -38,7 +37,6 @@ export interface User {
   avatar?: string;
   authMethod: 'google' | 'phone';
   joinedAt: number;
-  plan?: 'free' | 'trial-7d' | '3-months' | '1-year' | 'pro' | 'enterprise';
 }
 
 export type BiometricModality = 'fingerprint' | 'faceId' | 'both';

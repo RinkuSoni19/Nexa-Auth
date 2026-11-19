@@ -202,7 +202,12 @@ export const AddAccountScreen: React.FC = () => {
 
       {/* Header */}
       <div className="relative z-10 flex items-center gap-3 px-4 pt-9 pb-3.5 border-b border-emerald-500/10 bg-[#030705]/95 backdrop-blur-xl">
-        <button onClick={() => setScreen('dashboard')} className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 hover:border-emerald-500/40 transition cursor-pointer">
+        <button
+          type="button"
+          onClick={() => setScreen('dashboard')}
+          aria-label="Back to Vault"
+          className="w-9 h-9 rounded-xl bg-zinc-900/80 border border-zinc-700 text-zinc-300 hover:border-emerald-500/40 transition cursor-pointer flex items-center justify-center"
+        >
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div>
@@ -213,15 +218,21 @@ export const AddAccountScreen: React.FC = () => {
 
       <div className="relative z-10 flex-1 overflow-y-auto px-4 py-4 pb-36 no-scrollbar">
         {/* Tabs */}
-        <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-900/80 rounded-2xl border border-zinc-800 mb-4">
+        <div role="tablist" aria-label="Account entry method" className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-900/80 rounded-2xl border border-zinc-800 mb-4">
           {[
             { key: 'qr' as const, label: 'Scan QR Code', icon: Camera },
             { key: 'manual' as const, label: 'Manual Key', icon: Key },
           ].map(({ key, label, icon: Icon }) => (
-            <button key={key} onClick={() => { if (key === 'manual') stopCamera(); setTab(key); }}
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              onClick={() => { if (key === 'manual') stopCamera(); setTab(key); }}
               className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                 tab === key ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'text-zinc-400 hover:text-white'
-              }`}>
+              }`}
+            >
               <Icon className="w-3.5 h-3.5" />{label}
             </button>
           ))}
@@ -272,18 +283,18 @@ export const AddAccountScreen: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-2 w-full">
               {scanning ? (
-                <button onClick={stopCamera}
+                <button type="button" onClick={stopCamera}
                   className="col-span-2 py-3.5 rounded-2xl font-bold text-sm text-white bg-red-600/80 border border-red-400/30 cursor-pointer flex items-center justify-center gap-2">
                   <StopCircle className="w-4 h-4" /> Stop Camera
                 </button>
               ) : (
                 <>
-                  <button onClick={startCamera}
+                  <button type="button" onClick={startCamera}
                     className="py-3.5 rounded-2xl font-bold text-sm text-black cursor-pointer flex items-center justify-center gap-2"
                     style={{ background: 'linear-gradient(135deg,#00c853,#00ff88)', boxShadow: '0 6px 20px rgba(0,200,83,0.25)' }}>
                     <Camera className="w-4 h-4" /> Start Camera
                   </button>
-                  <button onClick={() => fileInputRef.current?.click()}
+                  <button type="button" onClick={() => fileInputRef.current?.click()}
                     className="py-3.5 rounded-2xl font-bold text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 cursor-pointer flex items-center justify-center gap-2">
                     <ImagePlus className="w-4 h-4" /> Choose Image
                   </button>
@@ -296,7 +307,7 @@ export const AddAccountScreen: React.FC = () => {
               <p className="text-xs text-zinc-400 font-mono mb-2 text-center">— or add a popular service —</p>
               <div className="grid grid-cols-3 gap-2">
                 {QUICK_TEMPLATES.map(t => (
-                  <button key={t.issuer} onClick={() => useTemplate(t)}
+                  <button type="button" key={t.issuer} onClick={() => useTemplate(t)}
                     className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-emerald-500/40 transition cursor-pointer group">
                     <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${t.bg} flex items-center justify-center font-bold text-white text-sm`}>
                       {t.icon}
@@ -313,13 +324,14 @@ export const AddAccountScreen: React.FC = () => {
         {tab === 'manual' && (
           <form onSubmit={handleManualAdd} className="space-y-3">
             {[
-              { label: 'Service / Issuer', placeholder: 'e.g. GitHub, Coinbase', value: issuer, onChange: setIssuer, required: true },
-              { label: 'Account / Email', placeholder: 'user@example.com', value: accountName, onChange: setAccountName, required: true },
-              { label: 'Secret Key (Base32)', placeholder: 'XXXX XXXX XXXX', value: secret, onChange: setSecret, required: true },
-            ].map(({ label, placeholder, value, onChange, required }) => (
-              <div key={label}>
-                <label className="text-[11px] text-zinc-400 block mb-1 font-mono">{label}</label>
+              { id: 'manual-issuer', label: 'Service / Issuer', placeholder: 'e.g. GitHub, Coinbase', value: issuer, onChange: setIssuer, required: true },
+              { id: 'manual-account', label: 'Account / Email', placeholder: 'user@example.com', value: accountName, onChange: setAccountName, required: true },
+              { id: 'manual-secret', label: 'Secret Key (Base32)', placeholder: 'JBSWY3DPEHPK3PXP', value: secret, onChange: setSecret, required: true },
+            ].map(({ id, label, placeholder, value, onChange, required }) => (
+              <div key={id}>
+                <label htmlFor={id} className="text-[11px] text-zinc-400 block mb-1 font-mono">{label}</label>
                 <input
+                  id={id}
                   type="text"
                   required={required}
                   value={value}
@@ -332,8 +344,9 @@ export const AddAccountScreen: React.FC = () => {
 
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[11px] text-zinc-400 block mb-1 font-mono">Algorithm</label>
+                <label htmlFor="manual-algorithm" className="text-[11px] text-zinc-400 block mb-1 font-mono">Algorithm</label>
                 <select
+                  id="manual-algorithm"
                   value={algorithm}
                   onChange={e => setAlgorithm(e.target.value as 'SHA1'|'SHA256')}
                   className="w-full bg-[#0d1712] border border-emerald-500/20 rounded-xl px-2 py-3 text-xs text-white outline-none"
@@ -343,8 +356,9 @@ export const AddAccountScreen: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] text-zinc-400 block mb-1 font-mono">Digits</label>
+                <label htmlFor="manual-digits" className="text-[11px] text-zinc-400 block mb-1 font-mono">Digits</label>
                 <select
+                  id="manual-digits"
                   value={digits}
                   onChange={e => setDigits(Number(e.target.value) as 6|8)}
                   className="w-full bg-[#0d1712] border border-emerald-500/20 rounded-xl px-2 py-3 text-xs text-white outline-none"
@@ -354,8 +368,9 @@ export const AddAccountScreen: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] text-zinc-400 block mb-1 font-mono">Period</label>
+                <label htmlFor="manual-period" className="text-[11px] text-zinc-400 block mb-1 font-mono">Period</label>
                 <select
+                  id="manual-period"
                   value={period}
                   onChange={e => setPeriod(Number(e.target.value) as 30|60)}
                   className="w-full bg-[#0d1712] border border-emerald-500/20 rounded-xl px-2 py-3 text-xs text-white outline-none"
@@ -367,10 +382,10 @@ export const AddAccountScreen: React.FC = () => {
             </div>
 
             <div>
-              <label className="text-[11px] text-zinc-400 block mb-1 font-mono">Category</label>
+              <span className="text-[11px] text-zinc-400 block mb-1 font-mono">Category</span>
               <div className="grid grid-cols-4 gap-1.5">
                 {(['work','crypto','personal','social'] as const).map(c => (
-                  <button key={c} type="button" onClick={() => setCategory(c)}
+                  <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c)}
                     className={`py-2 rounded-xl text-xs font-semibold capitalize cursor-pointer border transition ${
                       category === c ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-zinc-900 text-zinc-400 border-zinc-800'
                     }`}>
@@ -380,9 +395,13 @@ export const AddAccountScreen: React.FC = () => {
               </div>
             </div>
 
-            <motion.button whileTap={{ scale: 0.97 }} type="submit" disabled={!issuer || !accountName || adding}
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              type="submit"
+              disabled={!issuer.trim() || !accountName.trim() || !secret.trim() || adding}
               className="w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2 text-white"
-              style={{ background: 'linear-gradient(135deg,#e50914,#ff2e4d 50%,#00c853)', boxShadow: '0 8px 24px rgba(229,9,20,0.3)' }}>
+              style={{ background: 'linear-gradient(135deg,#e50914,#ff2e4d 50%,#00c853)', boxShadow: '0 8px 24px rgba(229,9,20,0.3)' }}
+            >
               {adding ? <><Loader2 className="w-4 h-4 animate-spin" />Adding…</> : <>Add to Vault <ChevronRight className="w-4 h-4" /></>}
             </motion.button>
           </form>
